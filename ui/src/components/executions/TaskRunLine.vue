@@ -260,7 +260,11 @@
                 return `kestra-execution-${this.$moment().format("YYYYMMDDHHmmss")}-${this.followedExecution.id}-${currentTaskRunId}.log`
             },
             selectedAttempt(taskRun) {
-                return this.attempts(taskRun)[this.selectedAttemptNumberByTaskRunId[taskRun.id] ?? 0];
+                let currentAttempt = this.attempts(taskRun)[this.selectedAttemptNumberByTaskRunId[taskRun.id] ?? 0]
+                if(currentAttempt.state.current === State.RUNNING){
+                    currentAttempt.state.current = State.INPROGRESS
+                }
+                return currentAttempt;
             },
             taskType(taskRun) {
                 if(!taskRun) return undefined;
