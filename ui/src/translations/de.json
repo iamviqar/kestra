@@ -881,6 +881,7 @@
     "files": "Dateien",
     "add-trigger-in-editor": "Fügen Sie zuerst einen Trigger zu Ihrem Flow hinzu",
     "delete confirm multiple": "Sind Sie sicher, dass Sie <code>{name}</code> KV(s) löschen möchten?",
+    "test confirm": "Are you sure to delete <code>{name}</code>?",
     "show task condition": "Bedingung des Tasks anzeigen",
     "empty search": "Suchergebnisse sind leer",
     "pause confirm": "Sind Sie sicher, dass Sie die Ausführung <code>{id}</code> pausieren möchten?",
