@@ -2,6 +2,7 @@
   "en": {
     "id": "Id",
     "type": "Type",
+    "testtype": "Type",
     "ok": "OK",
     "testok": "OK",
     "close": "Close",

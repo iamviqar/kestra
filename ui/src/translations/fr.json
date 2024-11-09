@@ -4,6 +4,7 @@
     "type": "Type",
     "ok": "OK",
     "close": "Fermer",
+    "testtype": "Type",
     "description": "Description",
     "show description": "Afficher une description",
     "namespace": "Espace de nom",
