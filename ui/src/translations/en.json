@@ -3,6 +3,7 @@
     "id": "Id",
     "type": "Type",
     "ok": "OK",
+    "testok": "OK",
     "close": "Close",
     "namespace": "Namespace",
     "description": "Description",
