@@ -24,6 +24,7 @@
       "confirm": "Êtes-vous sûr de vouloir l'écraser ?",
       "update": {
         "title": "Révision dépassée",
+        "name": "Outdated rev",
         "description": "Une révision plus récente du Flow existe.",
         "details": "Regardez l'onglet Révisions pour plus de détails sur la dernière version."
       },

@@ -28,6 +28,7 @@
       "confirm": "Do you want to overwrite it?",
       "update": {
         "title": "Outdated revision",
+        "name": "Outdated revision",
         "description": "The revision you are editing is outdated.",
         "details": "Check the Revisions tab for more details about the latest version."
       },
