@@ -21,6 +21,7 @@
     "confirmation": "Confirmation",
     "delete confirm": "Are you sure to delete <code>{name}</code>?",
     "test confirm": "Are you sure to delete <code>{name}</code>?",
+    "test confirm1": "Are you sure to delete <code>{name}</code>?",
     "delete confirm multiple": "Are you sure to delete <code>{name}</code> KV(s)?",
     "outdated revision save confirmation": {
       "confirm": "Do you want to overwrite it?",

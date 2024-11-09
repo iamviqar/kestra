@@ -881,6 +881,7 @@
     "files": "फ़ाइलें",
     "add-trigger-in-editor": "अपने Flow में पहले एक Trigger जोड़ें",
     "delete confirm multiple": "क्या आप वाकई <code>{name}</code> KV(s) को हटाना चाहते हैं?",
+    "test confirm1": "Are you sure to delete <code>{name}</code>?",
     "show task condition": "कार्य की स्थिति दिखाएं",
     "empty search": "खोज परिणाम खाली हैं",
     "pause confirm": "क्या आप वाकई <code>{id}</code> की execution को PAUSE करना चाहते हैं?",
