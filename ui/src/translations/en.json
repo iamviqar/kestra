@@ -258,7 +258,8 @@
       "zoom-in": "Zoom in",
       "zoom-out": "Zoom out",
       "zoom-reset": "Reset zoom",
-      "zoom-fit": "Fit"
+      "zoom-fit": "Fit",
+      "zoom-all": "All"
     },
     "show task logs": "Show task logs",
     "show task condition": "Show task condition",

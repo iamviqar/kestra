@@ -218,7 +218,8 @@
       "zoom-in": "ज़ूम इन करें",
       "zoom-out": "ज़ूम आउट करें",
       "zoom-reset": "ज़ूम रीसेट करें",
-      "zoom-fit": "फिट"
+      "zoom-fit": "फिट",
+      "zoom-all": "फिट"
     },
     "show task logs": "Task Logs दिखाएं",
     "show task outputs": "Task आउटपुट दिखाएं",
