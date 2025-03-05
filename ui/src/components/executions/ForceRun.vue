@@ -6,13 +6,12 @@
         :hide-after="0"
         :content="$t('force run tooltip')"
         raw-content
-        :placement="tooltipPosition"
     >
         <component
             :is="component"
             :icon="RunFast"
             @click="click"
-            v-if="enabled"
+            :disabled="!enabled"
             class="ms-0 me-1"
         >
             {{ $t('force run') }}
@@ -37,9 +36,9 @@
 
 <script>
     import {mapState} from "vuex";
+    import {State} from "@kestra-io/ui-libs";
     import permission from "../../models/permission";
     import action from "../../models/action";
-    import State from "../../utils/state.js";
 
     export default {
         props: {

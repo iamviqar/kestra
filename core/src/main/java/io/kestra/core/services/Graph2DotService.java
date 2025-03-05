@@ -33,9 +33,7 @@ public class Graph2DotService {
         StringBuilder sb = new StringBuilder();
 
         for(AbstractGraph node : graph.nodes()) {
-            if (node instanceof GraphCluster) {
-                GraphCluster subGraph = (GraphCluster) node;
-
+            if (node instanceof GraphCluster subGraph) {
                 if (uid == null || !uid.equals(subGraph.getUid())) {
                     sb.append(subgraph(subGraph, level + 1));
                 }
@@ -66,10 +64,15 @@ public class Graph2DotService {
     }
 
     private static String label(AbstractGraph node) {
-        String shape = node instanceof GraphClusterEnd ? "point" : "box";
-        String label = node instanceof GraphClusterEnd ? "end" : node.getLabel();
+        String shape;
 
-        return "[shape=" + shape + ",label=\"" + label + "\"]";
+        if (node instanceof GraphClusterRoot || node instanceof GraphClusterFinally || node instanceof GraphClusterEnd) {
+            shape = "point";
+        } else {
+            shape = "box";
+        }
+
+        return "[shape=" + shape + "]";
     }
 
     private static String nodeName(AbstractGraph node) {

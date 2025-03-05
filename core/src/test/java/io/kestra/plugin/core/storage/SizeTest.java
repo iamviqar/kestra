@@ -1,5 +1,6 @@
 package io.kestra.plugin.core.storage;
 
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.storages.StorageInterface;
@@ -33,12 +34,13 @@ class SizeTest {
 
         URI put = storageInterface.put(
             null,
+            null,
             new URI("/file/storage/get.yml"),
             new ByteArrayInputStream(randomBytes)
         );
 
         Size bash = Size.builder()
-            .uri(put.toString())
+            .uri(Property.of(put.toString()))
             .build();
 
         Size.Output run = bash.run(runContext);

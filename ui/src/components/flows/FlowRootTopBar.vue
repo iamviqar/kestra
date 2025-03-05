@@ -2,7 +2,7 @@
     <top-nav-bar :breadcrumb="routeInfo.breadcrumb" :title="routeInfo.title">
         <template #title>
             <template v-if="deleted">
-                <Alert class="text-warning me-2" />Deleted:&nbsp;
+                <Alert class="text-warning me-2" />{{ $t('deleted_label') }}:&nbsp;
             </template>
             <Lock v-else-if="!isAllowedEdit" class="me-2 gray-700" />
             <span :class="{'body-color': deleted}">{{ routeInfo.title }}</span>
@@ -14,7 +14,7 @@
                         {{ $t("restore") }}
                     </el-button>
                 </li>
-                <li v-if="isAllowedEdit && !deleted && activeTabName !== 'editor'">
+                <li v-if="isAllowedEdit && !deleted && activeTabName !== 'edit'">
                     <el-button
                         :icon="Pencil"
                         @click="editFlow"
@@ -101,7 +101,7 @@
                     params: {
                         namespace: this.flow.namespace,
                         id: this.flow.id,
-                        tab: "editor",
+                        tab: "edit",
                         tenant: this.$route.params.tenant,
                     },
                 });

@@ -27,8 +27,8 @@ public class SubflowGraphTask extends AbstractGraphTask {
 
     public ExecutableTask<?> executableTask() {
         TaskInterface task = super.getTask();
-        if (task instanceof ExecutableTask) {
-            return (ExecutableTask<?>) task;
+        if (task instanceof ExecutableTask<?> executableTask) {
+            return executableTask;
         } else {
             return null;
         }
@@ -77,6 +77,11 @@ public class SubflowGraphTask extends AbstractGraphTask {
         }
 
         @Override
+        public RestartBehavior getRestartBehavior() {
+            return subflowTask.getRestartBehavior();
+        }
+
+        @Override
         public String getId() {
             return ((TaskInterface) subflowTask).getId();
         }
@@ -84,6 +89,11 @@ public class SubflowGraphTask extends AbstractGraphTask {
         @Override
         public String getType() {
             return ((TaskInterface) subflowTask).getType();
+        }
+
+        @Override
+        public String getVersion() {
+            return ((TaskInterface) subflowTask).getVersion();
         }
     }
 }

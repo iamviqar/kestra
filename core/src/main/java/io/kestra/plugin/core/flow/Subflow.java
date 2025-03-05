@@ -1,5 +1,7 @@
 package io.kestra.plugin.core.flow;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import io.kestra.core.exceptions.InternalException;
 import io.kestra.core.models.Label;
 import io.kestra.core.models.annotations.Example;
@@ -19,6 +21,9 @@ import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.SubflowExecution;
 import io.kestra.core.runners.SubflowExecutionResult;
+import io.kestra.core.serializers.ListOrMapOfLabelDeserializer;
+import io.kestra.core.serializers.ListOrMapOfLabelSerializer;
+import io.kestra.core.validations.NoSystemLabelValidation;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Min;
 import lombok.experimental.SuperBuilder;
@@ -31,15 +36,9 @@ import lombok.ToString;
 
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
-import org.apache.commons.lang3.stream.Streams;
 
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @SuperBuilder
@@ -48,14 +47,16 @@ import java.util.stream.Collectors;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Create a subflow execution. Subflows offer a modular way to reuse workflow logic by calling other flows just like calling a function in a programming language."
+    title = "Create a subflow execution. Subflows offer a modular way to reuse workflow logic by calling other flows just like calling a function in a programming language.",
+    description = "Restarting a parent flow will restart any subflows that has previously been executed."
 )
 @Plugin(
     examples = {
         @Example(
             title = "Run a subflow with custom inputs.",
+            full = true,
             code = """
-                id: running_subflow
+                id: parent_flow
                 namespace: company.team
 
                 tasks:
@@ -64,8 +65,8 @@ import java.util.stream.Collectors;
                     namespace: company.team
                     flowId: subflow
                     inputs:
-                      user: "Rick Astley"
-                      favorite_song: "Never Gonna Give You Up"
+                      user: Rick Astley
+                      favorite_song: Never Gonna Give You Up
                     wait: true
                     transmitFailed: true
                 """
@@ -106,10 +107,13 @@ public class Subflow extends Task implements ExecutableTask<Subflow.Output>, Chi
     private Map<String, Object> inputs;
 
     @Schema(
-        title = "The labels to pass to the subflow to be executed."
+        title = "The labels to pass to the subflow to be executed.",
+        implementation = Object.class, oneOf = {List.class, Map.class}
     )
     @PluginProperty(dynamic = true)
-    private Map<String, String> labels;
+    @JsonSerialize(using = ListOrMapOfLabelSerializer.class)
+    @JsonDeserialize(using = ListOrMapOfLabelDeserializer.class)
+    private List<@NoSystemLabelValidation Label> labels;
 
     @Builder.Default
     @Schema(
@@ -148,8 +152,19 @@ public class Subflow extends Task implements ExecutableTask<Subflow.Output>, Chi
 
     @Schema(
         title = "Don't trigger the subflow now but schedule it on a specific date."
-   )
+    )
     private Property<ZonedDateTime> scheduleDate;
+
+    @Schema(
+        title = "What to do when a failed execution is restarting.",
+        description = """
+            - RETRY_FAILED (default): will restart the subflow execution if it's failed.
+            - NEW_EXECUTION: will create a new subflow execution.""
+            """
+    )
+    @NotNull
+    @Builder.Default
+    private RestartBehavior restartBehavior = RestartBehavior.RETRY_FAILED;
 
     @Override
     public List<SubflowExecution<?>> createSubflowExecutions(RunContext runContext,
@@ -162,7 +177,7 @@ public class Subflow extends Task implements ExecutableTask<Subflow.Output>, Chi
             inputs.putAll(runContext.render(this.inputs));
         }
 
-        return List.of(ExecutableUtils.subflowExecution(
+        return ExecutableUtils.subflowExecution(
             runContext,
             flowExecutorInterface,
             currentExecution,
@@ -173,7 +188,9 @@ public class Subflow extends Task implements ExecutableTask<Subflow.Output>, Chi
             labels,
             inheritLabels,
             scheduleDate
-        ));
+        )
+            .<List<SubflowExecution<?>>>map(subflowExecution -> List.of(subflowExecution))
+            .orElse(Collections.emptyList());
     }
 
     @Override

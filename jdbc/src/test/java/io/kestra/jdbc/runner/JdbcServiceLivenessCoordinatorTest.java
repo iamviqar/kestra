@@ -1,6 +1,7 @@
 package io.kestra.jdbc.runner;
 
 import com.google.common.collect.ImmutableMap;
+import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.conditions.ConditionContext;
 import io.kestra.core.models.executions.Execution;
 import io.kestra.core.models.executions.TaskRun;
@@ -8,28 +9,19 @@ import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.State.Type;
 import io.kestra.core.models.tasks.ResolvedTask;
 import io.kestra.core.models.triggers.Trigger;
-import io.kestra.core.models.triggers.TriggerContext;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.repositories.LocalFlowRepositoryLoader;
-import io.kestra.core.runners.RunContextFactory;
-import io.kestra.core.runners.StandAloneRunner;
-import io.kestra.core.runners.Worker;
-import io.kestra.core.runners.WorkerJob;
-import io.kestra.core.runners.WorkerTask;
-import io.kestra.core.runners.WorkerTaskResult;
-import io.kestra.core.runners.WorkerTrigger;
-import io.kestra.core.runners.WorkerTriggerResult;
+import io.kestra.core.runners.*;
 import io.kestra.core.services.SkipExecutionService;
-import io.kestra.core.tasks.test.Sleep;
 import io.kestra.core.tasks.test.SleepTrigger;
 import io.kestra.core.utils.Await;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.TestsUtils;
 import io.kestra.jdbc.JdbcTestUtils;
+import io.kestra.plugin.core.flow.Sleep;
 import io.micronaut.context.ApplicationContext;
 import io.micronaut.context.annotation.Property;
-import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import org.junit.jupiter.api.BeforeAll;
@@ -47,8 +39,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.fail;
 
 @KestraTest(environments =  {"test", "liveness"})
@@ -92,7 +83,6 @@ public abstract class JdbcServiceLivenessCoordinatorTest {
     void init() throws IOException, URISyntaxException {
         jdbcTestUtils.drop();
         jdbcTestUtils.migrate();
-        TestsUtils.loads(repositoryLoader);
         // Simulate that executor and workers are not running on the same JVM.
         jdbcServiceLivenessHandler.setServerInstance(IdUtils.create());
     }
@@ -129,7 +119,10 @@ public abstract class JdbcServiceLivenessCoordinatorTest {
         newWorker.run();
         boolean resubmitLatchAwait = resubmitLatch.await(30, TimeUnit.SECONDS);
         assertThat(resubmitLatchAwait, is(true));
-        assertThat(receive.blockLast().getTaskRun().getState().getCurrent(), is(Type.SUCCESS));
+        WorkerTaskResult workerTaskResult = receive.blockLast();
+        assertThat(workerTaskResult, notNullValue());
+        assertThat(workerTaskResult.getTaskRun().getState().getCurrent(), is(Type.SUCCESS));
+        assertThat(workerTaskResult.getTaskRun().getAttempts(), hasSize(2));
         newWorker.shutdown();
     }
 
@@ -157,7 +150,7 @@ public abstract class JdbcServiceLivenessCoordinatorTest {
         });
 
         workerJobQueue.emit(workerTask);
-        boolean runningLatchAwait = runningLatch.await(2, TimeUnit.SECONDS);
+        boolean runningLatchAwait = runningLatch.await(10, TimeUnit.SECONDS);
         assertThat(runningLatchAwait, is(true));
         worker.shutdown();
 
@@ -208,7 +201,7 @@ public abstract class JdbcServiceLivenessCoordinatorTest {
         Sleep bash = Sleep.builder()
             .type(Sleep.class.getName())
             .id("unit-test")
-            .duration(sleep.toMillis())
+            .duration(sleep)
             .build();
 
         Execution execution = TestsUtils.mockExecution(flowBuilder(sleep), ImmutableMap.of());
@@ -242,7 +235,7 @@ public abstract class JdbcServiceLivenessCoordinatorTest {
         Sleep bash = Sleep.builder()
             .type(Sleep.class.getName())
             .id("unit-test")
-            .duration(sleep.toMillis())
+            .duration(sleep)
             .build();
 
         SleepTrigger trigger = SleepTrigger.builder()

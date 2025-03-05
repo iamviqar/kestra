@@ -1,9 +1,14 @@
 package io.kestra.core.plugins;
 
+import io.kestra.core.app.AppBlockInterface;
+import io.kestra.core.app.AppPluginInterface;
 import io.kestra.core.models.Plugin;
 import io.kestra.core.models.conditions.Condition;
-import io.kestra.core.models.tasks.runners.TaskRunner;
+import io.kestra.core.models.dashboards.DataFilter;
+import io.kestra.core.models.dashboards.charts.Chart;
 import io.kestra.core.models.tasks.Task;
+import io.kestra.core.models.tasks.logs.LogExporter;
+import io.kestra.core.models.tasks.runners.TaskRunner;
 import io.kestra.core.models.triggers.AbstractTrigger;
 import io.kestra.core.secret.SecretPluginInterface;
 import io.kestra.core.storages.StorageInterface;
@@ -73,9 +78,11 @@ public class PluginScanner {
     public RegisteredPlugin scan() {
         try {
             long start = System.currentTimeMillis();
-            Manifest manifest = new Manifest(IOUtils.toInputStream("Manifest-Version: 1.0\n" +
-                "X-Kestra-Title: core\n" +
-                "X-Kestra-Group: io.kestra.plugin.core\n",
+            Manifest manifest = new Manifest(IOUtils.toInputStream("""
+                    Manifest-Version: 1.0
+                    X-Kestra-Title: core
+                    X-Kestra-Group: io.kestra.plugin.core
+                    """,
                 StandardCharsets.UTF_8
             ));
 
@@ -88,6 +95,7 @@ public class PluginScanner {
 
     }
 
+    @SuppressWarnings("unchecked")
     private RegisteredPlugin scanClassLoader(final ClassLoader classLoader,
                                              final ExternalPlugin externalPlugin,
                                              Manifest manifest) {
@@ -96,7 +104,12 @@ public class PluginScanner {
         List<Class<? extends Condition>> conditions = new ArrayList<>();
         List<Class<? extends StorageInterface>> storages = new ArrayList<>();
         List<Class<? extends SecretPluginInterface>> secrets = new ArrayList<>();
-        List<Class<? extends TaskRunner>> taskRunners = new ArrayList<>();
+        List<Class<? extends TaskRunner<?>>> taskRunners = new ArrayList<>();
+        List<Class<? extends AppPluginInterface>> apps = new ArrayList<>();
+        List<Class<? extends AppBlockInterface>> appBlocks = new ArrayList<>();
+        List<Class<? extends Chart<?>>> charts = new ArrayList<>();
+        List<Class<? extends DataFilter<?, ?>>> dataFilters = new ArrayList<>();
+        List<Class<? extends LogExporter<?>>> logExporter = new ArrayList<>();
         List<String> guides = new ArrayList<>();
         Map<String, Class<?>> aliases = new HashMap<>();
 
@@ -129,12 +142,35 @@ public class PluginScanner {
                         storages.add(storage.getClass());
                     }
                     case SecretPluginInterface storage -> {
-                        log.debug("Loading SecretPlugin plugin: '{}'", plugin.getClass());
+                        log.debug("Loading Secret plugin: '{}'", plugin.getClass());
                         secrets.add(storage.getClass());
                     }
-                    case TaskRunner runner -> {
+                    case TaskRunner<?> runner -> {
                         log.debug("Loading TaskRunner plugin: '{}'", plugin.getClass());
-                        taskRunners.add(runner.getClass());
+                        //noinspection unchecked
+                        taskRunners.add((Class<? extends TaskRunner<?>>) runner.getClass());
+                    }
+                    case AppPluginInterface app -> {
+                        log.debug("Loading App plugin: '{}'", plugin.getClass());
+                        apps.add(app.getClass());
+                    }
+                    case AppBlockInterface appBlock -> {
+                        log.debug("Loading AppBlock plugin: '{}'", plugin.getClass());
+                        appBlocks.add(appBlock.getClass());
+                    }
+                    case Chart<?> chart -> {
+                        log.debug("Loading Chart plugin: '{}'", plugin.getClass());
+                        //noinspection unchecked
+                        charts.add((Class<? extends Chart<?>>) chart.getClass());
+                    }
+                    case DataFilter<?, ?> dataFilter -> {
+                        log.debug("Loading DataFilter plugin: '{}'", plugin.getClass());
+                        //noinspection unchecked
+                        dataFilters.add((Class<? extends DataFilter<?, ?>>)  dataFilter.getClass());
+                    }
+                    case LogExporter<?> shipper -> {
+                        log.debug("Loading LogExporter plugin: '{}'", plugin.getClass());
+                        logExporter.add((Class<? extends LogExporter<?>>)  shipper.getClass());
                     }
                     default -> {
                     }
@@ -179,8 +215,13 @@ public class PluginScanner {
             .conditions(conditions)
             .storages(storages)
             .secrets(secrets)
+            .apps(apps)
+            .appBlocks(appBlocks)
             .taskRunners(taskRunners)
+            .charts(charts)
+            .dataFilters(dataFilters)
             .guides(guides)
+            .logExporters(logExporter)
             .aliases(aliases.entrySet().stream().collect(Collectors.toMap(
                 e -> e.getKey().toLowerCase(),
                 Function.identity()

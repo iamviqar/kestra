@@ -15,8 +15,6 @@ import jakarta.inject.Singleton;
 import lombok.Getter;
 
 import java.io.IOException;
-import java.io.StringWriter;
-import java.io.Writer;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -56,8 +54,7 @@ public class VariableRenderer {
             return new IllegalVariableEvaluationException(
                 "Unable to find `" + current.getAttributeName() +
                     "` used in the expression `" + current.getFileName() +
-                    "` at line " + current.getLineNumber(),
-                e
+                    "` at line " + current.getLineNumber()
             );
         }
 
@@ -116,8 +113,8 @@ public class VariableRenderer {
         } catch (IOException | PebbleException e) {
             String alternativeRender = this.alternativeRender(e, (String) inline, variables);
             if (alternativeRender == null) {
-                if (e instanceof PebbleException) {
-                    throw properPebbleException((PebbleException) e);
+                if (e instanceof PebbleException pebbleException) {
+                    throw properPebbleException(pebbleException);
                 }
                 throw new IllegalVariableEvaluationException(e);
             } else {
@@ -125,9 +122,9 @@ public class VariableRenderer {
             }
         }
 
-        if (result instanceof String && replacers != null) {
+        if (result instanceof String stringValue && replacers != null) {
             // post-process raw tags
-            result = putBackRawTags(replacers, (String) result);
+            result = putBackRawTags(replacers, stringValue);
         }
 
         return result;

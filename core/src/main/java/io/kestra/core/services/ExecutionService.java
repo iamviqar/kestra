@@ -3,6 +3,7 @@ package io.kestra.core.services;
 import io.kestra.core.events.CrudEvent;
 import io.kestra.core.events.CrudEventType;
 import io.kestra.core.exceptions.InternalException;
+import io.kestra.core.models.Label;
 import io.kestra.core.models.executions.Execution;
 import io.kestra.core.models.executions.ExecutionKilled;
 import io.kestra.core.models.executions.ExecutionKilledExecution;
@@ -15,7 +16,6 @@ import io.kestra.core.models.hierarchies.AbstractGraphTask;
 import io.kestra.core.models.hierarchies.GraphCluster;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.models.tasks.retrys.AbstractRetry;
-import io.kestra.core.queues.QueueException;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.repositories.ExecutionRepositoryInterface;
@@ -27,6 +27,7 @@ import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.GraphUtils;
 import io.kestra.core.utils.IdUtils;
+import io.kestra.core.utils.ListUtils;
 import io.kestra.plugin.core.flow.Pause;
 import io.kestra.plugin.core.flow.WorkingDirectory;
 import io.micronaut.context.event.ApplicationEventPublisher;
@@ -97,18 +98,23 @@ public class ExecutionService {
     @Inject
     private ConcurrencyLimitService concurrencyLimitService;
 
-    public Execution getExecutionIfPause(final String tenant, final @NotNull String executionId) {
-        Optional<Execution> maybeExecution = executionRepository.findById(tenant, executionId);
-        if (maybeExecution.isEmpty()) {
-            throw new NoSuchElementException("Execution '"+ executionId + "' not found.");
-        }
+    public Execution getExecutionIfPause(final String tenant, final @NotNull String executionId, boolean withACL) {
+        Execution execution = getExecution(tenant, executionId, withACL);
 
-        var execution = maybeExecution.get();
         if (!execution.getState().isPaused()) {
             throw new IllegalStateException("Execution '"+ executionId + "' is not paused, can't resume it");
         }
 
         return execution;
+    }
+
+    public Execution getExecution(final String tenant, final @NotNull String executionId, boolean withACL) {
+        Optional<Execution> maybeExecution = withACL ?
+            executionRepository.findById(tenant, executionId) :
+            executionRepository.findByIdWithoutAcl(tenant, executionId);
+
+        return maybeExecution
+            .orElseThrow(() -> new NoSuchElementException("Execution '"+ executionId + "' not found."));
     }
 
     /**
@@ -209,7 +215,11 @@ public class ExecutionService {
                 execution.withState(State.Type.RESTARTED).getState()
             );
 
-        newExecution = newExecution.withMetadata(execution.getMetadata().nextAttempt());
+        List<Label> newLabels = new ArrayList<>(ListUtils.emptyOnNull(execution.getLabels()));
+        if (!newLabels.contains(new Label(Label.RESTARTED, "true"))) {
+            newLabels.add(new Label(Label.RESTARTED, "true"));
+        }
+        newExecution = newExecution.withMetadata(execution.getMetadata().nextAttempt()).withLabels(newLabels);
 
         return revision != null ? newExecution.withFlowRevision(revision) : newExecution;
     }
@@ -288,7 +298,11 @@ public class ExecutionService {
             taskRunId == null ? new State() : execution.withState(State.Type.RESTARTED).getState()
         );
 
-        newExecution = newExecution.withMetadata(execution.getMetadata().nextAttempt());
+        List<Label> newLabels = new ArrayList<>(ListUtils.emptyOnNull(execution.getLabels()));
+        if (!newLabels.contains(new Label(Label.REPLAY, "true"))) {
+            newLabels.add(new Label(Label.REPLAY, "true"));
+        }
+        newExecution = newExecution.withMetadata(execution.getMetadata().nextAttempt()).withLabels(newLabels);
 
         return revision != null ? newExecution.withFlowRevision(revision) : newExecution;
     }
@@ -304,7 +318,7 @@ public class ExecutionService {
             taskRun -> taskRun.getId().equals(taskRunId)
         );
 
-        Execution newExecution = execution;
+        Execution newExecution = execution.withMetadata(execution.getMetadata().nextAttempt());
 
         for (String s : taskRunToRestart) {
             TaskRun originalTaskRun = newExecution.findTaskRunByTaskRunId(s);
@@ -318,13 +332,18 @@ public class ExecutionService {
                     newTaskRun = newTaskRun.withOutputs(pauseTask.generateOutputs(onResumeInputs));
                 }
 
-                if (task instanceof Pause pauseTask && pauseTask.getTasks() == null && newState == State.Type.RUNNING) {
-                    newTaskRun = newTaskRun.withState(State.Type.SUCCESS);
+                // if it's a Pause task with no subtask, we terminate the task
+                if (task instanceof Pause pauseTask && pauseTask.getTasks() == null) {
+                    if (newState == State.Type.RUNNING) {
+                        newTaskRun = newTaskRun.withState(State.Type.SUCCESS);
+                    } else if (newState == State.Type.KILLING) {
+                        newTaskRun = newTaskRun.withState(State.Type.KILLED);
+                    }
                 }
 
                 if (originalTaskRun.getAttempts() != null && !originalTaskRun.getAttempts().isEmpty()) {
                     ArrayList<TaskRunAttempt> attempts = new ArrayList<>(originalTaskRun.getAttempts());
-                    attempts.set(attempts.size() - 1, attempts.get(attempts.size() - 1).withState(newState));
+                    attempts.set(attempts.size() - 1, attempts.getLast().withState(newState));
                     newTaskRun = newTaskRun.withAttempts(attempts);
                 }
 
@@ -397,7 +416,7 @@ public class ExecutionService {
 
                 if (purgeStorage) {
                     URI uri = StorageContext.forExecution(execution).getExecutionStorageURI(StorageContext.KESTRA_SCHEME);
-                    builder.storagesCount(storageInterface.deleteByPrefix(execution.getTenantId(), uri).size());
+                    builder.storagesCount(storageInterface.deleteByPrefix(execution.getTenantId(), execution.getNamespace(), uri).size());
                 }
 
                 return (PurgeResult) builder.build();
@@ -437,7 +456,7 @@ public class ExecutionService {
 
         if (deleteStorage) {
             URI uri = StorageContext.forExecution(execution).getExecutionStorageURI(StorageContext.KESTRA_SCHEME);
-            storageInterface.deleteByPrefix(execution.getTenantId(), uri);
+            storageInterface.deleteByPrefix(execution.getTenantId(), execution.getNamespace(), uri);
         }
     }
 
@@ -446,7 +465,7 @@ public class ExecutionService {
      * The execution must be paused or this call will be a no-op.
      *
      * @param execution the execution to resume
-     * @param newState  should be RUNNING or KILLING, other states may lead to undefined behaviour
+     * @param newState  should be RUNNING or KILLING, other states may lead to undefined behavior
      * @param flow      the flow of the execution
      * @return the execution in the new state.
      * @throws Exception if the state of the execution cannot be updated
@@ -456,7 +475,28 @@ public class ExecutionService {
     }
 
     /**
+     * Validates the inputs for an execution to be resumed.
+     * <p>
+     * The execution must be paused or this call will be a no-op.
+     *
+     * @param execution the execution to resume
+     * @param flow      the flow of the execution
+     * @return the execution in the new state.
+     */
+    public Mono<List<InputAndValue>> validateForResume(final Execution execution, Flow flow) {
+        return getFirstPausedTaskOr(execution, flow)
+            .flatMap(task -> {
+                if (task.isPresent() && task.get() instanceof Pause pauseTask) {
+                    return Mono.just(flowInputOutput.resolveInputs(pauseTask.getOnResume(), flow, execution, Map.of()));
+                } else {
+                    return Mono.just(Collections.emptyList());
+                }
+            });
+    }
+
+    /**
      * Resume a paused execution to a new state.
+     * <p>
      * The execution must be paused or this call will be a no-op.
      *
      * @param execution the execution to resume
@@ -468,7 +508,7 @@ public class ExecutionService {
         return getFirstPausedTaskOr(execution, flow)
             .flatMap(task -> {
                 if (task.isPresent() && task.get() instanceof Pause pauseTask) {
-                    return flowInputOutput.validateExecutionInputs(pauseTask.getOnResume(), execution, inputs);
+                    return flowInputOutput.validateExecutionInputs(pauseTask.getOnResume(), flow, execution, inputs);
                 } else {
                     return Mono.just(Collections.emptyList());
                 }
@@ -489,7 +529,7 @@ public class ExecutionService {
         return getFirstPausedTaskOr(execution, flow)
             .flatMap(task -> {
                 if (task.isPresent() && task.get() instanceof Pause pauseTask) {
-                    return flowInputOutput.readExecutionInputs(pauseTask.getOnResume(), execution, inputs);
+                    return flowInputOutput.readExecutionInputs(pauseTask.getOnResume(), flow, execution, inputs);
                 } else {
                     return Mono.just(Collections.<String, Object>emptyMap());
                 }
@@ -604,22 +644,27 @@ public class ExecutionService {
      * @return the execution in a KILLING state if not already terminated
      */
     public Execution kill(Execution execution, Flow flow) {
+        if (execution.getState().getCurrent() == State.Type.KILLING || execution.getState().isTerminated()) {
+            return execution;
+        }
+
+        Execution newExecution;
         if (execution.getState().isPaused()) {
             // Must be resumed and killed, no need to send killing event to the worker as the execution is not executing anything in it.
             // An edge case can exist where the execution is resumed automatically before we resume it with a killing.
             try {
-                return this.resume(execution, flow, State.Type.KILLING);
+                newExecution = this.resume(execution, flow, State.Type.KILLING);
             } catch (Exception e) {
                 // if we cannot resume, we set it anyway to killing, so we don't throw
                 log.warn("Unable to resume a paused execution before killing it", e);
+                newExecution = execution.withState(State.Type.KILLING);
             }
+        } else {
+            newExecution = execution.withState(State.Type.KILLING);
         }
 
-        if (execution.getState().getCurrent() != State.Type.KILLING && !execution.getState().isTerminated()) {
-            return execution.withState(State.Type.KILLING);
-        }
-
-        return execution;
+        eventPublisher.publishEvent(new CrudEvent<>(newExecution, execution, CrudEventType.UPDATE));
+        return newExecution;
     }
 
     /**

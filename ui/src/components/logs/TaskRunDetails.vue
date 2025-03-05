@@ -27,7 +27,11 @@
                         :shown-attempts-uid="shownAttemptsUid"
                         :logs="filteredLogs"
                         @update-logs="loadLogs"
-                    />
+                    >
+                        <template #buttons>
+                            <div id="buttons" />
+                        </template>
+                    </task-run-line>
                     <for-each-status
                         v-if="shouldDisplayProgressBar(currentTaskRun)"
                         :execution-id="currentTaskRun.executionId"
@@ -37,7 +41,7 @@
                     <DynamicScroller
                         v-if="shouldDisplayLogs(currentTaskRun)"
                         :items="logsWithIndexByAttemptUid[attemptUid(currentTaskRun.id, selectedAttemptNumberByTaskRunId[currentTaskRun.id])] ?? []"
-                        :min-item-size="50"
+                        :min-item-size="0.1"
                         key-field="index"
                         class="log-lines"
                         :ref="el => logsScrollerRef(el, currentTaskRunIndex, attemptUid(currentTaskRun.id, selectedAttemptNumberByTaskRunId[currentTaskRun.id]))"
@@ -50,16 +54,18 @@
                                 :size-dependencies="[item.message, item.image]"
                                 :data-index="index"
                             >
-                                <el-button-group class="line" v-if="item.logFile">
-                                    <a class="el-button el-button--small el-button--primary" :href="fileUrl(item.logFile)" target="_blank">
-                                        <Download />
-                                        {{ $t('download') }}
-                                    </a>
-                                    <FilePreview :value="item.logFile" :execution-id="followedExecution.id" />
-                                    <el-button disabled size="small" type="primary" v-if="logFileSizeByPath[item.logFile]">
-                                        ({{ logFileSizeByPath[item.logFile] }})
-                                    </el-button>
-                                </el-button-group>
+                                <Teleport v-if="item.logFile" to="#buttons">
+                                    <el-button-group class="line">
+                                        <a class="el-button el-button--small el-button--primary" :href="fileUrl(item.logFile)" target="_blank">
+                                            <Download />
+                                            {{ $t('download') }}
+                                        </a>
+                                        <FilePreview :value="item.logFile" :execution-id="followedExecution.id" />
+                                        <el-button disabled size="small" type="primary" v-if="logFileSizeByPath[item.logFile]">
+                                            ({{ logFileSizeByPath[item.logFile] }})
+                                        </el-button>
+                                    </el-button-group>
+                                </Teleport>
                                 <log-line
                                     @click="emitLogCursor(`${currentTaskRunIndex}/${index}`)"
                                     class="line"
@@ -98,7 +104,7 @@
 
 <script>
     import LogLine from "./LogLine.vue";
-    import State from "../../utils/state";
+    import {State} from "@kestra-io/ui-libs"
     import _xor from "lodash/xor";
     import _groupBy from "lodash/groupBy";
     import moment from "moment";
@@ -261,7 +267,8 @@
                         this.$nextTick(() => {
                             const parentScroller = this.$refs.taskRunScroller?.$el?.parentNode?.closest(".vue-recycle-scroller");
                             if (parentScroller) {
-                                this.$refs.taskRunScroller.$el.style.maxHeight = `${parentScroller.computedStyleMap().get("max-height").value - parentScroller.clientHeight}px`;
+                                const scrollerStyles = window.getComputedStyle(parentScroller);
+                                this.$refs.taskRunScroller.$el.style.maxHeight = `${scrollerStyles.getPropertyValue("max-height") - parentScroller.clientHeight}px`;
                             }
                         })
                     }
@@ -321,8 +328,6 @@
                 return Download
             },
             currentTaskRuns() {
-                // console.log(this.followedExecution?.taskRunList?.filter(tr => this.taskRunId ? tr.id === this.taskRunId : true))
-                // return this.logs.map(log => log.taskRunId).filter(tr => this.taskRunId ? tr.id === this.taskRunId : true)
                 return this.followedExecution?.taskRunList?.filter(tr => this.taskRunId ? tr.id === this.taskRunId : true) ?? [];
             },
             params() {
@@ -434,7 +439,11 @@
                 }
             },
             toggleExpandCollapseAll() {
-                this.shownAttemptsUid.length === 0 ? this.expandAll() : this.collapseAll();
+                if(this.shownAttemptsUid.length === 0){
+                    this.expandAll()
+                } else {
+                    this.collapseAll()
+                }
             },
             autoExpandBasedOnSettings() {
                 if (this.autoExpandTaskrunStates.length === 0) {
@@ -477,7 +486,10 @@
                             if (isEnd) {
                                 this.closeExecutionSSE();
                             }
-                            this.throttledExecutionUpdate(executionEvent);
+                            // we are receiving a first "fake" event to force initializing the connection: ignoring it
+                            if (executionEvent.lastEventId !== "start") {
+                                this.throttledExecutionUpdate(executionEvent);
+                            }
                             if (isEnd) {
                                 this.throttledExecutionUpdate.flush();
                             }
@@ -491,7 +503,11 @@
                         this.logsSSE = sse;
 
                         this.logsSSE.onmessage = event => {
-                            this.logsBuffer = this.logsBuffer.concat(JSON.parse(event.data));
+
+                            // we are receiving a first "fake" event to force initializing the connection: ignoring it
+                            if (event.lastEventId !== "start") {
+                                this.logsBuffer = this.logsBuffer.concat(JSON.parse(event.data));
+                            }
 
                             clearTimeout(this.timeout);
                             this.timeout = setTimeout(() => {
@@ -510,7 +526,16 @@
                                 this.scrollToBottomFailedTask();
                             }
                         }
+
+                        this.logsSSE.onerror = _ => {
+                            this.$store.dispatch("core/showMessage", {
+                                variant: "error",
+                                title: this.$t("error"),
+                                message: this.$t("something_went_wrong.loading_execution"),
+                            });
+                        }
                     })
+
             },
             isSubflow(taskRun) {
                 return taskRun.outputs?.executionId;
@@ -563,7 +588,7 @@
                         if (taskRun.state.current === State.FAILED || taskRun.state.current === State.RUNNING) {
                             const attemptNumber = taskRun.attempts ? taskRun.attempts.length - 1 : (this.forcedAttemptNumber ?? 0)
                             if (this.shownAttemptsUid.includes(`${taskRun.id}-${attemptNumber}`)) {
-                                this.logsScrollerRefs?.[`${taskRun.id}-${attemptNumber}`]?.[0]?.scrollToBottom();
+                                this.logsScrollerRefs?.[`${taskRun.id}-${attemptNumber}`]?.scrollToBottom();
                             }
                         }
                     });
@@ -659,29 +684,16 @@
         }
 
         &::-webkit-scrollbar-track {
-            background: var(--card-bg);
+            background: var(--ks-background-card);
         }
 
         &::-webkit-scrollbar-thumb {
-            background: var(--bs-primary);
+            background: var(--ks-button-background-primary);
             border-radius: 0px;
         }
 
-        &.even > div > .el-card {
-            background: var(--bs-gray-100);
-
-            html.dark & {
-                background: var(--bs-gray-200);
-            }
-
-            .task-icon {
-                border: none;
-                color: $white;
-            }
-        }
-
         :deep(> .vue-recycle-scroller__item-wrapper > .vue-recycle-scroller__item-view > div) {
-            padding-bottom: var(--spacer);
+            padding-bottom: 1rem;
         }
 
         :deep(.line) {
@@ -689,18 +701,29 @@
         }
 
         .attempt-wrapper {
-            background-color: var(--bs-white);
+            background-color: var(--ks-background-input);
+            margin-bottom: 0;
+            border: 1px solid var(--ks-border-primary);
 
-            :deep(.vue-recycle-scroller__item-view + .vue-recycle-scroller__item-view) {
-                border-top: 1px solid var(--bs-border-color);
-            }
-
-            html.dark & {
-                background-color: var(--bs-gray-100);
+            :deep(.el-card__body) {
+                padding: 0;
             }
 
             .attempt-wrapper & {
                 border-radius: .25rem;
+            }
+
+            tbody:last-child & {
+                border-bottom: 1px solid var(--ks-border-primary);
+            }
+
+            .attempt-header {
+                padding: 0 .5rem .5rem;
+                border-bottom: 1px solid var(--ks-border-primary);
+            }
+
+            .line {
+                padding: .5rem;
             }
         }
 
@@ -719,10 +742,9 @@
         .log-lines {
             max-height: 50vh;
             transition: max-height 0.2s ease-out;
-            margin-top: calc(var(--spacer) / 2);
 
             .line {
-                padding: calc(var(--spacer) / 2);
+                padding: 1rem;
 
                 &.cursor {
                     background-color: var(--bs-gray-300)
@@ -738,7 +760,7 @@
             }
 
             &::-webkit-scrollbar-thumb {
-                background: var(--bs-primary);
+                background: var(--ks-button-background-primary);
             }
         }
     }

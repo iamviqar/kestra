@@ -3,6 +3,7 @@ package io.kestra.plugin.core.namespace;
 import com.devskiller.friendly_id.FriendlyId;
 import com.google.common.collect.ImmutableMap;
 import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.storages.Namespace;
@@ -45,6 +46,7 @@ public class UploadFilesTest {
 
         URI fileStorage = storageInterface.put(
             null,
+            null,
             new URI("/" + FriendlyId.createFriendlyId()),
             new FileInputStream(file)
         );
@@ -52,9 +54,9 @@ public class UploadFilesTest {
             .id(UploadFiles.class.getSimpleName())
             .type(UploadFiles.class.getName())
             .filesMap(Map.of("/path/file.txt", fileStorage.toString()))
-            .namespace(namespace)
-            .conflict(Namespace.Conflicts.ERROR)
-            .destination("/folder")
+            .namespace(Property.of(namespace))
+            .conflict(Property.of(Namespace.Conflicts.ERROR))
+            .destination(Property.of("/folder"))
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(this.runContextFactory, uploadFile, ImmutableMap.of());
@@ -74,8 +76,8 @@ public class UploadFilesTest {
             .id(UploadFiles.class.getSimpleName())
             .type(UploadFiles.class.getName())
             .filesMap(Map.of("/path/file.txt", fileStorage.toString()))
-            .namespace("{{ inputs.namespace }}")
-            .destination("/folder")
+            .namespace(new Property<>("{{ inputs.namespace }}"))
+            .destination(Property.of("/folder"))
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(this.runContextFactory, uploadFile,  ImmutableMap.of("namespace", namespace));
@@ -112,9 +114,9 @@ public class UploadFilesTest {
             .id(UploadFiles.class.getSimpleName())
             .type(UploadFiles.class.getName())
             .filesMap(Map.of("/path/file.txt", fileStorage.toString()))
-            .namespace(namespace)
-            .conflict(Namespace.Conflicts.SKIP)
-            .destination("/folder")
+            .namespace(Property.of(namespace))
+            .conflict(Property.of(Namespace.Conflicts.SKIP))
+            .destination(Property.of("/folder"))
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(this.runContextFactory, uploadFile, ImmutableMap.of());
@@ -149,10 +151,10 @@ public class UploadFilesTest {
         UploadFiles uploadFile = UploadFiles.builder()
             .id(UploadFiles.class.getSimpleName())
             .type(UploadFiles.class.getName())
-            .files(List.of("glob:**application**"))
-            .namespace(namespace)
-            .conflict(Namespace.Conflicts.SKIP)
-            .destination("/folder/")
+            .files(Property.of(List.of("glob:**application**")))
+            .namespace(Property.of(namespace))
+            .conflict(Property.of(Namespace.Conflicts.SKIP))
+            .destination(Property.of("/folder/"))
             .build();
 
         RunContext runContext = TestsUtils.mockRunContext(this.runContextFactory, uploadFile, ImmutableMap.of());
@@ -168,6 +170,7 @@ public class UploadFilesTest {
         File file = new File(Objects.requireNonNull(UploadFilesTest.class.getClassLoader().getResource(fileToLoad)).toURI());
 
         return storageInterface.put(
+            null,
             null,
             new URI("/" + FriendlyId.createFriendlyId()),
             new FileInputStream(file)

@@ -2,8 +2,10 @@ package io.kestra.core.models.flows;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.introspect.AnnotatedMember;
@@ -13,11 +15,13 @@ import io.kestra.core.models.HasUID;
 import io.kestra.core.models.Label;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.executions.Execution;
+import io.kestra.core.models.flows.sla.SLA;
 import io.kestra.core.models.listeners.Listener;
 import io.kestra.core.models.tasks.FlowableTask;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.models.tasks.retrys.AbstractRetry;
 import io.kestra.core.models.triggers.AbstractTrigger;
+import io.kestra.core.models.triggers.Trigger;
 import io.kestra.core.models.validations.ManualConstraintViolation;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.serializers.ListOrMapOfLabelDeserializer;
@@ -31,10 +35,7 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.ToString;
+import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +57,7 @@ public class Flow extends AbstractFlow implements HasUID {
         .setSerializationInclusion(JsonInclude.Include.NON_DEFAULT);
 
     private static final ObjectMapper WITHOUT_REVISION_OBJECT_MAPPER = NON_DEFAULT_OBJECT_MAPPER.copy()
+        .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
         .setAnnotationIntrospector(new JacksonAnnotationIntrospector() {
             @Override
             public boolean hasIgnoreMarker(final AnnotatedMember m) {
@@ -79,6 +81,15 @@ public class Flow extends AbstractFlow implements HasUID {
 
     @Valid
     List<Task> errors;
+
+    @Valid
+    @JsonProperty("finally")
+    @Getter(AccessLevel.NONE)
+    protected List<Task> _finally;
+
+    public List<Task> getFinally() {
+        return this._finally;
+    }
 
     @Valid
     @Deprecated
@@ -116,7 +127,12 @@ public class Flow extends AbstractFlow implements HasUID {
     List<Output> outputs;
 
     @Valid
-    protected AbstractRetry retry;
+    AbstractRetry retry;
+
+    @Valid
+    @PluginProperty(beta = true)
+    List<SLA> sla;
+
 
     public Logger logger() {
         return LoggerFactory.getLogger("flow." + this.id);
@@ -161,6 +177,14 @@ public class Flow extends AbstractFlow implements HasUID {
         );
     }
 
+    public static String uid(Trigger trigger) {
+        return IdUtils.fromParts(
+            trigger.getTenantId(),
+            trigger.getNamespace(),
+            trigger.getFlowId()
+        );
+    }
+
     public static String uidWithoutRevision(Execution execution) {
         return IdUtils.fromParts(
             execution.getTenantId(),
@@ -180,8 +204,9 @@ public class Flow extends AbstractFlow implements HasUID {
 
     public Stream<Task> allTasks() {
         return Stream.of(
-                this.tasks != null ? this.tasks : new ArrayList<Task>(),
-                this.errors != null ? this.errors : new ArrayList<Task>(),
+                this.tasks != null ? this.tasks : Collections.<Task>emptyList(),
+                this.errors != null ? this.errors : Collections.<Task>emptyList(),
+                this._finally != null ? this._finally : Collections.<Task>emptyList(),
                 this.listenersTasks()
             )
             .flatMap(Collection::stream);
@@ -212,7 +237,7 @@ public class Flow extends AbstractFlow implements HasUID {
 
     public List<String> allTriggerIds() {
         return this.triggers != null ? this.triggers.stream()
-            .filter(trigger -> trigger.getId() != null) // this can happen when validation a flow under creation
+            .filter(trigger -> trigger != null && trigger.getId() != null) // this can happen when validating a flow under creation
             .map(AbstractTrigger::getId)
             .collect(Collectors.toList()) : Collections.emptyList();
     }
@@ -262,9 +287,21 @@ public class Flow extends AbstractFlow implements HasUID {
             .orElse(null);
     }
 
+    public AbstractTrigger findTriggerByTriggerId(String triggerId) {
+        return this.triggers
+            .stream()
+            .filter(trigger -> trigger.getId().equals(triggerId))
+            .findFirst()
+            .orElse(null);
+    }
+
+    /**
+     * @deprecated should not be used
+     */
+    @Deprecated(forRemoval = true, since = "0.21.0")
     public Flow updateTask(String taskId, Task newValue) throws InternalException {
         Task task = this.findTaskByTaskId(taskId);
-        Flow flow = this instanceof FlowWithSource ? ((FlowWithSource) this).toFlow() : this;
+        Flow flow = this instanceof FlowWithSource flowWithSource ? flowWithSource.toFlow() : this;
 
         Map<String, Object> map = NON_DEFAULT_OBJECT_MAPPER.convertValue(flow, JacksonMapper.MAP_TYPE_REFERENCE);
 
@@ -275,8 +312,7 @@ public class Flow extends AbstractFlow implements HasUID {
     }
 
     private static Object recursiveUpdate(Object object, Task previous, Task newValue) {
-        if (object instanceof Map) {
-            Map<?, ?> value = (Map<?, ?>) object;
+        if (object instanceof Map<?, ?> value) {
             if (value.containsKey("id") && value.get("id").equals(previous.getId()) &&
                 value.containsKey("type") && value.get("type").equals(previous.getType())
             ) {
@@ -291,8 +327,7 @@ public class Flow extends AbstractFlow implements HasUID {
                     ))
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
             }
-        } else if (object instanceof Collection) {
-            Collection<?> value = (Collection<?>) object;
+        } else if (object instanceof Collection<?> value) {
             return value
                 .stream()
                 .map(r -> recursiveUpdate(r, previous, newValue))
@@ -304,7 +339,7 @@ public class Flow extends AbstractFlow implements HasUID {
 
     private List<Task> listenersTasks() {
         if (this.getListeners() == null) {
-            return new ArrayList<>();
+            return Collections.emptyList();
         }
 
         return this.getListeners()
@@ -353,8 +388,12 @@ public class Flow extends AbstractFlow implements HasUID {
         }
     }
 
+    /**
+     * Convenience method to generate the source of a flow.
+     * Equivalent to <code>FlowService.generateSource(this);</code>
+     */
     public String generateSource() {
-        return FlowService.generateSource(this, null);
+        return FlowService.generateSource(this);
     }
 
     public Flow toDeleted() {

@@ -1,14 +1,8 @@
 package io.kestra.core.utils;
 
-import com.google.common.collect.Lists;
 import jakarta.validation.constraints.NotNull;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class MapUtils {
@@ -18,11 +12,11 @@ public class MapUtils {
         }
 
         if (a == null || a.isEmpty()) {
-            return copyMap(b);
+            return b;
         }
 
         if (b == null || b.isEmpty()) {
-            return copyMap(a);
+            return a;
         }
 
         Map copy = copyMap(a);
@@ -31,38 +25,24 @@ public class MapUtils {
             .entrySet()
             .stream()
             .collect(
-                () -> newHashMap(copy.size()),
+                () -> HashMap.newHashMap(copy.size()),
                 (m, v) -> {
                     Object original = copy.get(v.getKey());
                     Object value = v.getValue();
                     Object found;
 
-                    if (value == null && original == null) {
-                        found = null;
-                    } else if (value == null) {
+                    if (value == null) {
                         found = original;
                     } else if (original == null) {
                         found = value;
-                    } else if (value instanceof Map && original instanceof Map) {
-                        found = merge((Map) original, (Map) value);
-                    } else if (value instanceof Collection
-                        && original instanceof Collection) {
-                        try {
-                            found = Lists
-                                .newArrayList(
-                                    (Collection) original,
-                                    (Collection) value
-                                )
-                                .stream()
-                                .flatMap(Collection::stream)
-                                .toList();
-                        } catch (Exception e) {
-                            throw new RuntimeException(e);
-                        }
+                    } else if (value instanceof Map mapValue && original instanceof Map mapOriginal) {
+                        found = merge(mapOriginal, mapValue);
+                    } else if (value instanceof Collection collectionValue
+                        && original instanceof Collection collectionOriginal) {
+                        found = mergeCollections(collectionOriginal, collectionValue);
                     } else {
                         found = value;
                     }
-
 
                     m.put(v.getKey(), found);
                 },
@@ -74,20 +54,27 @@ public class MapUtils {
         return copy;
     }
 
+    private static Collection mergeCollections(Collection collectionOriginal, Collection collectionValue) {
+        List<String> newList = new ArrayList<>(collectionOriginal.size() + collectionValue.size());
+        newList.addAll(collectionOriginal);
+        newList.addAll(collectionValue);
+        return newList;
+    }
+
     private static Map copyMap(Map original) {
         return ((Map<?, ?>) original)
             .entrySet()
             .stream()
             .collect(
-                () -> newHashMap(original.size()),
+                () -> HashMap.newHashMap(original.size()),
                 (map, entry) -> {
                     Object value = entry.getValue();
                     Object found;
 
-                    if (value instanceof Map) {
-                        found = cloneMap((Map) value);
-                    } else if (value instanceof Collection) {
-                        found = cloneCollection((Collection) value);
+                    if (value instanceof Map mapValue) {
+                        found = cloneMap(mapValue);
+                    } else if (value instanceof Collection collectionValue) {
+                        found = cloneCollection(collectionValue);
                     } else {
                         found = value;
                     }
@@ -142,16 +129,10 @@ public class MapUtils {
     }
 
     /**
-     * Creates a hash map that can hold <code>numMappings</code> entry.
-     * This is a copy of the same methods available starting with Java 19.
+     * Utility method that returns true if the map is null or empty.
      */
-    public static <K, V> HashMap<K, V> newHashMap(int numMappings) {
-        if (numMappings < 0) {
-            throw new IllegalArgumentException("Negative number of mappings: " + numMappings);
-        }
-
-        int hashMapCapacity = (int) Math.ceil(numMappings / 0.75d);
-        return new HashMap<>(hashMapCapacity);
+    public static boolean isEmpty(Map<?, ?> map) {
+        return map == null || map.isEmpty();
     }
 
     /**

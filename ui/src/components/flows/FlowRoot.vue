@@ -29,6 +29,7 @@
     import {apiUrl} from "override/utils/route";
     import FlowRootTopBar from "./FlowRootTopBar.vue";
     import FlowConcurrency from "./FlowConcurrency.vue";
+    import DemoAuditLogs from "../demo/AuditLogs.vue";
 
     export default {
         mixins: [RouteContext],
@@ -161,9 +162,9 @@
                     )
                 ) {
                     tabs.push({
-                        name: "editor",
+                        name: "edit",
                         component: FlowEditor,
-                        title: this.$t("editor"),
+                        title: this.$t("edit"),
                         containerClass: "full-container",
                         props: {
                             expandedSubflows: this.expandedSubflows,
@@ -202,11 +203,6 @@
                         name: "triggers",
                         component: FlowTriggers,
                         title: this.$t("triggers"),
-                        props: {
-                            showTooltip: !this.flow.triggers || this.flow.triggers.length === 0
-                        },
-                        disabled: !this.flow.triggers,
-                        hideTitle: !this.flow.triggers
                     });
                 }
 
@@ -227,7 +223,7 @@
                             showFilters: true,
                             restoreurl: false,
                         },
-                        containerClass: "full-container p-4"
+                        containerClass: "container"
                     });
                 }
 
@@ -272,6 +268,11 @@
                 tabs.push(                    {
                     name: "auditlogs",
                     title: this.$t("auditlogs"),
+                    component: DemoAuditLogs,
+                    maximize: true,
+                    props:{
+                        embed: true
+                    },
                     locked: true
                 });
 
@@ -314,7 +315,7 @@
                 return this.getTabs();
             },
             ready() {
-                return this.user !== undefined && this.flow !== undefined;
+                return this.user && this.flow;
             },
             isAllowedEdit() {
                 if (!this.flow || !this.user) {
@@ -332,7 +333,7 @@
                     return false;
                 }
 
-                return (this.flow.labels?.["system.readOnly"] === "true" ?? false) || (this.flow.labels?.["system.readOnly"] === true ?? false);
+                return (this.flow.labels?.["system.readOnly"] === "true") || (this.flow.labels?.["system.readOnly"] === true);
             },
             routeFlowDependencies() {
                 return this.dependenciesCount > 0 ? FlowDependencies : FlowNoDependencies;
@@ -346,9 +347,9 @@
 </script>
 <style lang="scss" scoped>
 .gray-700 {
-    color: var(--bs-secondary-color);
+    color: var(--ks-content-secondary-color);
 }
 .body-color {
-    color: var(--bs-body-color);
+    color: var(--ks-content-primary);
 }
 </style>

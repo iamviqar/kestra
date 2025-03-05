@@ -1,5 +1,5 @@
 <template>
-    <div class="monaco-editor" />
+    <div class="ks-monaco-editor" />
 </template>
 
 <script>
@@ -8,6 +8,7 @@
 
     import "monaco-editor/esm/vs/editor/editor.all.js";
     import "monaco-editor/esm/vs/editor/standalone/browser/iPadShowKeyboard/iPadShowKeyboard.js";
+    import "monaco-editor/esm/vs/editor/standalone/browser/quickAccess/standaloneCommandsQuickAccess.js"
     import "monaco-editor/esm/vs/language/json/monaco.contribution";
     import "monaco-editor/esm/vs/basic-languages/monaco.contribution";
     import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
@@ -45,6 +46,22 @@
         }
     });
 
+    monaco.editor.defineTheme("light", {
+        base: "vs",
+        inherit: true,
+        rules: [
+            {token: "type", foreground: "#8405FF"},
+            {token: "string.yaml", foreground: "#001233"},
+            {token: "comment", foreground: "#8d99ae", fontStyle: "italic"},
+        ],
+        colors: {
+            "editor.lineHighlightBackground": "#fbfaff",
+            "editorLineNumber.foreground": "#444444",
+            "editor.selectionBackground": "#E8E5FF",
+            "editor.wordHighlightBackground": "#E8E5FF",
+        }
+    });
+
     export default defineComponent({
         data() {
             return {
@@ -75,7 +92,7 @@
             },
             theme: {
                 type: String,
-                default: "vs"
+                default: "light"
             },
             language: {
                 type: String,
@@ -445,7 +462,7 @@
                                 deleted: true
                             }
                         )).inputs?.map(input => input.id) ?? [];
-                    } catch (e) {
+                    } catch {
                         return undefined;
                     }
                 }
@@ -541,6 +558,9 @@
                 case "task":
                     autocompletions = ["id", "type"];
                     break;
+                case "taskrun":
+                    autocompletions = ["id", "startDate", "attemptsCount", "parentId", "value", "iteration"];
+                    break;
                 case "error":
                     autocompletions = ["taskId", "message", "stackTrace"];
                     break;
@@ -606,6 +626,7 @@
                         language: this.language,
                         suggest: {
                             showClasses: false,
+                            showWords: false
                         }
                     },
                     ...this.options
@@ -624,6 +645,29 @@
                         keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space,
                         command: "editor.action.triggerSuggest"
                     })
+
+                    monaco.editor.addKeybindingRule({
+                        keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP,
+                        command: "editor.action.quickCommand"
+                    })
+
+                    monaco.editor.addKeybindingRule({
+                        keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.DownArrow,
+                        command: "editor.action.fontZoomOut",
+                        when: "editorFocus"
+                    })
+
+                    monaco.editor.addKeybindingRule({
+                        keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.UpArrow,
+                        command: "editor.action.fontZoomIn",
+                        when: "editorFocus"
+                    })
+
+                    monaco.editor.addKeybindingRule({
+                        keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.Digit0,
+                        command: "editor.action.fontZoomReset",
+                        when: "editorFocus"
+                    });
 
                     this.editor = monaco.editor.create(this.$el, options);
 
@@ -714,18 +758,22 @@
 </script>
 
 <style scoped lang="scss">
-    .monaco-editor {
+    .ks-monaco-editor {
         position: absolute;
         width: 100%;
         height: 100%;
         outline: none;
     }
+
+    .main-editor > #editorWrapper .monaco-editor {
+        padding: 1rem 0 0 1rem;
+    }
 </style>
 
 <style lang="scss">
-    @import "../../styles/layout/root-dark.scss";
+    @import "../../styles/layout/root-dark";
 
-    .custom-dark-vs-theme .monaco-editor .sticky-widget {
+    .custom-dark-vs-theme .ks-monaco-editor .sticky-widget {
         background-color: $input-bg;
     }
 </style>

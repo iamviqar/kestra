@@ -40,7 +40,7 @@ class SplitTest {
         URI put = storageUpload(1000);
 
         Split result = Split.builder()
-            .from(put.toString())
+            .from(Property.of(put.toString()))
             .partitions(Property.of(8))
             .build();
 
@@ -57,7 +57,7 @@ class SplitTest {
         URI put = storageUpload(1000);
 
         Split result = Split.builder()
-            .from(put.toString())
+            .from(Property.of(put.toString()))
             .rows(Property.of(10))
             .build();
 
@@ -73,7 +73,7 @@ class SplitTest {
         URI put = storageUpload(12288);
 
         Split result = Split.builder()
-            .from(put.toString())
+            .from(Property.of(put.toString()))
             .bytes(Property.of("1KB"))
             .build();
 
@@ -93,7 +93,7 @@ class SplitTest {
     private String readAll(List<URI> uris) throws IOException {
         return uris
             .stream()
-            .map(Rethrow.throwFunction(uri -> CharStreams.toString(new InputStreamReader(storageInterface.get(null, uri)))))
+            .map(Rethrow.throwFunction(uri -> CharStreams.toString(new InputStreamReader(storageInterface.get(null, null, uri)))))
             .collect(Collectors.joining());
     }
 
@@ -104,6 +104,7 @@ class SplitTest {
         Files.write(tempFile.toPath(), content(count));
 
         return storageInterface.put(
+            null,
             null,
             new URI("/file/storage/get.yml"),
             new FileInputStream(tempFile)

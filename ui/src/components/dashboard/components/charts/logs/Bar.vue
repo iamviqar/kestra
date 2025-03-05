@@ -19,7 +19,7 @@
             :plugins="[barLegend]"
             class="tall"
         />
-        <el-empty v-else :description="$t('no_data')" />
+        <LogsNoData v-else />
     </div>
 </template>
 
@@ -33,8 +33,11 @@
     import {barLegend} from "../legend.js";
 
     import {defaultConfig, getFormat} from "../../../../../utils/charts.js";
-    import {getScheme} from "../../../../../utils/scheme.js";
+    import {useScheme} from "../../../../../utils/scheme.js";
     import Logs from "../../../../../utils/logs.js";
+
+    import LogsNoData from "./LogsNoData.vue";
+    import {useTheme} from "../../../../../utils/utils.js";
 
     const {t} = useI18n({useScope: "global"});
 
@@ -45,13 +48,16 @@
         },
     });
 
+    const theme = useTheme();
+    const scheme = useScheme("logs");
+
     const parsedData = computed(() => {
         let datasets = props.data.reduce(function (accumulator, value) {
             Object.keys(value.counts).forEach(function (state) {
                 if (accumulator[state] === undefined) {
                     accumulator[state] = {
                         label: state,
-                        backgroundColor: getScheme(state, "logs"),
+                        backgroundColor: scheme.value[state],
                         yAxisID: "y",
                         data: [],
                     };
@@ -81,9 +87,7 @@
             borderColor: "transparent",
             borderWidth: 2,
             plugins: {
-                barLegend: {
-                    containerID: "logs",
-                },
+                barLegend: {containerID: "logs"},
                 tooltip: {
                     enabled: true,
                     filter: (value) => value.raw,
@@ -136,7 +140,7 @@
                     },
                 },
             },
-        }),
+        }, theme.value),
     );
 </script>
 

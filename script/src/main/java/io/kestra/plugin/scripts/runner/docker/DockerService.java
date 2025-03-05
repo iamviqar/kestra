@@ -1,6 +1,7 @@
 package io.kestra.plugin.scripts.runner.docker;
 
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientBuilder;
 import com.github.dockerjava.core.DockerClientConfig;
 import com.github.dockerjava.core.NameParser;
@@ -50,13 +51,33 @@ public class DockerService {
         return "unix:///dind/docker.sock";
     }
 
+    public static DockerClient client(RunContext runContext, @Nullable String host, @Nullable Object config, @Nullable Credentials credentials, @Nullable String image) throws IOException, IllegalVariableEvaluationException {
+        DefaultDockerClientConfig.Builder dockerClientConfigBuilder = DefaultDockerClientConfig.createDefaultConfigBuilder()
+            .withDockerHost(DockerService.findHost(runContext, host));
+
+        if (config != null || credentials != null) {
+            Path configPath = DockerService.createConfig(
+                runContext,
+                config,
+                credentials != null ? List.of(credentials) : null,
+                image
+            );
+
+            dockerClientConfigBuilder.withDockerConfig(configPath.toFile().getAbsolutePath());
+        }
+
+        DockerClientConfig dockerClientConfig = dockerClientConfigBuilder.build();
+
+        return DockerService.client(dockerClientConfig);
+    }
+
     @SuppressWarnings("unchecked")
     public static Path createConfig(RunContext runContext, @Nullable Object config, @Nullable List<Credentials> credentials, @Nullable String image) throws IllegalVariableEvaluationException, IOException {
         Map<String, Object> finalConfig = new HashMap<>();
 
         if (config != null) {
-            if (config instanceof String) {
-                finalConfig = JacksonMapper.toMap(runContext.render(config.toString()));
+            if (config instanceof String configString) {
+                finalConfig = JacksonMapper.toMap(runContext.render(configString));
             } else {
                 finalConfig = runContext.render((Map<String, Object>) config);
             }
@@ -68,27 +89,27 @@ public class DockerService {
 
             for (Credentials c : credentials) {
                 if (c.getUsername() != null) {
-                    auths.put("username", runContext.render(c.getUsername()));
+                    auths.put("username", runContext.render(c.getUsername()).as(String.class).orElse(null));
                 }
 
                 if (c.getPassword() != null) {
-                    auths.put("password", runContext.render(c.getPassword()));
+                    auths.put("password", runContext.render(c.getPassword()).as(String.class).orElse(null));
                 }
 
                 if (c.getRegistryToken() != null) {
-                    auths.put("registrytoken", runContext.render(c.getRegistryToken()));
+                    auths.put("registrytoken", runContext.render(c.getRegistryToken()).as(String.class).orElse(null));
                 }
 
                 if (c.getIdentityToken() != null) {
-                    auths.put("identitytoken", runContext.render(c.getIdentityToken()));
+                    auths.put("identitytoken", runContext.render(c.getIdentityToken()).as(String.class).orElse(null));
                 }
 
                 if (c.getAuth() != null) {
-                    auths.put("auth", runContext.render(c.getAuth()));
+                    auths.put("auth", runContext.render(c.getAuth()).as(String.class).orElse(null));
                 }
 
                 if (c.getRegistry() != null) {
-                    registry = runContext.render(c.getRegistry());
+                    registry = runContext.render(c.getRegistry()).as(String.class).orElse(null);
                 } else if (image != null) {
                     String renderedImage = runContext.render(image);
                     String detectedRegistry = registryUrlFromImage(renderedImage);

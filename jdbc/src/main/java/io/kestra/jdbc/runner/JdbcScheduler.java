@@ -3,8 +3,6 @@ package io.kestra.jdbc.runner;
 import io.kestra.core.models.executions.Execution;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.triggers.Trigger;
-import io.kestra.core.queues.QueueFactoryInterface;
-import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.repositories.TriggerRepositoryInterface;
 import io.kestra.core.schedulers.*;
@@ -15,7 +13,6 @@ import io.kestra.core.utils.ListUtils;
 import io.kestra.jdbc.JooqDSLContextWrapper;
 import io.kestra.jdbc.repository.AbstractJdbcTriggerRepository;
 import io.micronaut.context.ApplicationContext;
-import io.micronaut.inject.qualifiers.Qualifiers;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -28,15 +25,12 @@ import java.util.function.BiConsumer;
 @Singleton
 @Slf4j
 public class JdbcScheduler extends AbstractScheduler {
-    private final QueueInterface<Execution> executionQueue;
     private final TriggerRepositoryInterface triggerRepository;
-    private final ConditionService conditionService;
-
     private final FlowRepositoryInterface flowRepository;
     private final JooqDSLContextWrapper dslContextWrapper;
+    private final ConditionService conditionService;
 
 
-    @SuppressWarnings("unchecked")
     @Inject
     public JdbcScheduler(
         ApplicationContext applicationContext,
@@ -44,9 +38,9 @@ public class JdbcScheduler extends AbstractScheduler {
     ) {
         super(applicationContext, flowListeners);
 
-        executionQueue = applicationContext.getBean(QueueInterface.class, Qualifiers.byName(QueueFactoryInterface.EXECUTION_NAMED));
         triggerRepository = applicationContext.getBean(AbstractJdbcTriggerRepository.class);
         triggerState = applicationContext.getBean(SchedulerTriggerStateInterface.class);
+        executionState = applicationContext.getBean(SchedulerExecutionState.class);
         conditionService = applicationContext.getBean(ConditionService.class);
         flowRepository = applicationContext.getBean(FlowRepositoryInterface.class);
         dslContextWrapper = applicationContext.getBean(JooqDSLContextWrapper.class);
@@ -66,21 +60,13 @@ public class JdbcScheduler extends AbstractScheduler {
 
                 Execution execution = either.getLeft();
                 if (execution.getTrigger() != null) {
-                    var flow = flowRepository.findById(execution.getTenantId(), execution.getNamespace(), execution.getFlowId()).orElse(null);
+                    var flow = flowRepository.findByIdWithSource(execution.getTenantId(), execution.getNamespace(), execution.getFlowId()).orElse(null);
                     if (execution.isDeleted() || conditionService.isTerminatedWithListeners(flow, execution)) {
                         // reset scheduler trigger at end
                         triggerRepository
                             .findByExecution(execution)
                             .ifPresent(trigger -> {
-                                this.triggerState.update(trigger.resetExecution(execution.getState().getCurrent()));
-                            });
-                    } else {
-                        // update execution state on each state change so the scheduler knows the execution is running
-                        triggerRepository
-                            .findByExecution(execution)
-                            .filter(trigger -> execution.getState().getCurrent() != trigger.getExecutionCurrentState())
-                            .ifPresent(trigger -> {
-                                ((JdbcSchedulerTriggerState) this.triggerState).updateExecution(Trigger.of(execution, trigger));
+                                this.triggerState.update(resetExecution(flow, execution, trigger));
                             });
                     }
                 }
@@ -104,7 +90,7 @@ public class JdbcScheduler extends AbstractScheduler {
     public void handleNext(List<FlowWithSource> flows, ZonedDateTime now, BiConsumer<List<Trigger>, ScheduleContextInterface> consumer) {
         JdbcSchedulerContext schedulerContext = new JdbcSchedulerContext(this.dslContextWrapper);
 
-        schedulerContext.startTransaction(scheduleContextInterface -> {
+        schedulerContext.doInTransaction(scheduleContextInterface -> {
             List<Trigger> triggers = this.triggerState.findByNextExecutionDateReadyForAllTenants(now, scheduleContextInterface);
 
             consumer.accept(triggers, scheduleContextInterface);

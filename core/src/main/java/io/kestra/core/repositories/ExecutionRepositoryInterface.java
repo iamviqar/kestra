@@ -1,5 +1,6 @@
 package io.kestra.core.repositories;
 
+import io.kestra.core.models.QueryFilter;
 import io.kestra.core.models.executions.Execution;
 import io.kestra.core.models.executions.TaskRun;
 import io.kestra.core.models.executions.statistics.DailyExecutionStatistics;
@@ -9,6 +10,7 @@ import io.kestra.core.models.executions.statistics.Flow;
 import io.kestra.core.models.flows.FlowScope;
 import io.kestra.core.models.flows.State;
 import io.kestra.core.utils.DateUtils;
+import io.kestra.plugin.core.dashboard.data.Executions;
 import io.micronaut.data.model.Pageable;
 import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.NotNull;
@@ -23,7 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 
-public interface ExecutionRepositoryInterface extends SaveRepositoryInterface<Execution> {
+public interface ExecutionRepositoryInterface extends SaveRepositoryInterface<Execution>, QueryBuilderInterface<Executions.Fields> {
     Boolean isTaskRunEnabled();
 
     default Optional<Execution> findById(String tenantId, String id) {
@@ -31,6 +33,8 @@ public interface ExecutionRepositoryInterface extends SaveRepositoryInterface<Ex
     }
 
     Optional<Execution> findById(String tenantId, String id, boolean allowDeleted);
+
+    Optional<Execution> findByIdWithoutAcl(String tenantId, String id);
 
     ArrayListTotal<Execution> findByFlowId(String tenantId, String namespace, String id, Pageable pageable);
 
@@ -43,21 +47,22 @@ public interface ExecutionRepositoryInterface extends SaveRepositoryInterface<Ex
      */
     Flux<Execution> findAllByTriggerExecutionId(String tenantId, String triggerExecutionId);
 
+    /**
+     * Finds the latest execution for the given flow and s.
+     *
+     * @param tenantId  The tenant ID.
+     * @param namespace The namespace of execution.
+     * @param flowId    The flow ID  of execution.
+     * @param states     The execution's states.
+     * @return an optional {@link Execution}.
+     */
+    Optional<Execution> findLatestForStates(String tenantId, String namespace, String flowId, List<State.Type> states);
+
     ArrayListTotal<Execution> find(
         Pageable pageable,
-        @Nullable String query,
         @Nullable String tenantId,
-        @Nullable List<FlowScope> scope,
-        @Nullable String namespace,
-        @Nullable String flowId,
-        @Nullable ZonedDateTime startDate,
-        @Nullable ZonedDateTime endDate,
-        @Nullable List<State.Type> state,
-        @Nullable Map<String, String> labels,
-        @Nullable String triggerExecutionId,
-        @Nullable ChildFilter childFilter
+        @Nullable List<QueryFilter> filters
     );
-
     default Flux<Execution> find(
         @Nullable String query,
         @Nullable String tenantId,
@@ -89,25 +94,16 @@ public interface ExecutionRepositoryInterface extends SaveRepositoryInterface<Ex
         boolean allowDeleted
     );
 
+
     ArrayListTotal<TaskRun> findTaskRun(
         Pageable pageable,
-        @Nullable String query,
         @Nullable String tenantId,
-        @Nullable String namespace,
-        @Nullable String flowId,
-        @Nullable ZonedDateTime startDate,
-        @Nullable ZonedDateTime endDate,
-        @Nullable List<State.Type> states,
-        @Nullable Map<String, String> labels,
-        @Nullable String triggerExecutionId,
-        @Nullable ChildFilter childFilter
+        List<QueryFilter> filters
     );
 
     Execution delete(Execution execution);
 
     Integer purge(Execution execution);
-
-    Integer maxTaskRunSetting();
 
     List<DailyExecutionStatistics> dailyStatisticsForAllTenants(
         @Nullable String query,

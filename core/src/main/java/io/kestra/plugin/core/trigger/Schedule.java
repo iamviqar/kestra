@@ -108,7 +108,7 @@ import java.util.stream.Stream;
                   - id: schedule
                     cron: "0 11 * * 1"
                     conditions:
-                      - type: io.kestra.plugin.core.condition.DayWeekInMonthCondition
+                      - type: io.kestra.plugin.core.condition.DayWeekInMonth
                         date: "{{ trigger.date }}"
                         dayOfWeek: "MONDAY"
                         dayInMonth: "FIRST"
@@ -337,13 +337,14 @@ public class Schedule extends AbstractTrigger implements Schedulable, TriggerOut
         RunContext runContext = conditionContext.getRunContext();
         ExecutionTime executionTime = this.executionTime();
         ZonedDateTime currentDateTimeExecution = convertDateTime(triggerContext.getDate());
-        Backfill backfill = triggerContext.getBackfill();
+
+        final Backfill backfill = triggerContext.getBackfill();
 
         if (backfill != null) {
             if (backfill.getPaused()) {
                 return Optional.empty();
             }
-            currentDateTimeExecution = backfill.getCurrentDate();
+            currentDateTimeExecution = convertDateTime(backfill.getCurrentDate());
         }
 
         Output scheduleDates = this.scheduleDates(executionTime, currentDateTimeExecution).orElse(null);
@@ -352,7 +353,14 @@ public class Schedule extends AbstractTrigger implements Schedulable, TriggerOut
             return Optional.empty();
         }
 
-        ZonedDateTime next = scheduleDates.getDate();
+        final ZonedDateTime next = scheduleDates.getDate();
+
+        // If the trigger is evaluated for 'back-fill', we have to make sure
+        // that 'current-date' is strictly after the next execution date for an execution to be eligible.
+        if (backfill != null && currentDateTimeExecution.isBefore(next)) {
+            // Otherwise, skip the execution.
+            return Optional.empty();
+        }
 
         // we are in the future don't allow
         // No use case, just here for prevention but it should never happen

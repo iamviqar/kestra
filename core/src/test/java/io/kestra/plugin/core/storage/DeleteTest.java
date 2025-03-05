@@ -1,6 +1,7 @@
 package io.kestra.plugin.core.storage;
 
 import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.property.Property;
 import org.junit.jupiter.api.Test;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
@@ -32,13 +33,14 @@ class DeleteTest {
 
         URI put = storageInterface.put(
             null,
+            null,
             new URI("/file/storage/get.yml"),
             new FileInputStream(Objects.requireNonNull(resource).getFile())
         );
 
 
         Delete bash = Delete.builder()
-            .uri(put.toString())
+            .uri(Property.of(put.toString()))
             .build();
 
         Delete.Output run = bash.run(runContext);
@@ -49,8 +51,8 @@ class DeleteTest {
 
         assertThrows(NoSuchElementException.class, () -> {
             Delete error = Delete.builder()
-                .uri(put.toString())
-                .errorOnMissing(true)
+                .uri(Property.of(put.toString()))
+                .errorOnMissing(Property.of(true))
                 .build();
 
             error.run(runContext);

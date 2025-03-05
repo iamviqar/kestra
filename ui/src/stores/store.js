@@ -2,7 +2,6 @@ import api from "./api"
 import auth from "./auth"
 import core from "./core"
 import execution from "./executions"
-import filters from "./filters";
 import flow from "./flow"
 import graph from "./graph"
 import layout from "./layout"
@@ -16,13 +15,15 @@ import taskrun from "./taskruns"
 import trigger from "./trigger";
 import editor from "./editor";
 import doc from "./doc";
-import starred from "./starred";
+import bookmarks from "./bookmarks";
+import dashboard from "./dashboard";
+import code from "./code";
+import blueprints from "./blueprints";
 
 export default {
     modules: {
         api,
         core,
-        filters,
         flow,
         template,
         execution,
@@ -38,6 +39,9 @@ export default {
         trigger,
         editor,
         doc,
-        starred
+        bookmarks,
+        dashboard,
+        code,
+        blueprints,
     }
 }

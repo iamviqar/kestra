@@ -27,6 +27,27 @@ public final class Enums {
      * @throws IllegalArgumentException if no enum exists for the specified value.
      */
     public static <T extends Enum<T>> T getForNameIgnoreCase(final @Nullable String value,
+                                                             final @NotNull Class<T> enumType,
+                                                             final T defaultValue) {
+        if (value == null) throw new IllegalArgumentException("Unsupported value 'null'");
+
+        T[] values = enumType.getEnumConstants();
+        return Arrays.stream(values)
+            .filter(e -> e.name().equals(value.toUpperCase(Locale.ROOT)))
+            .findFirst()
+            .orElse(defaultValue);
+    }
+
+    /**
+     * Gets the enum for specified string name.
+     *
+     * @param value    The enum raw value.
+     * @param enumType The enum class type.
+     * @param <T>      The enum type.
+     * @return The Enum.
+     * @throws IllegalArgumentException if no enum exists for the specified value.
+     */
+    public static <T extends Enum<T>> T getForNameIgnoreCase(final @Nullable String value,
                                                              final @NotNull Class<T> enumType) {
         return getForNameIgnoreCase(value, enumType, Map.of());
 
@@ -80,6 +101,22 @@ public final class Enums {
             .collect(Collectors.toSet());
     }
 
+    /**
+     * Converts a string to its corresponding enum value based on a provided mapping.
+     *
+     * @param value    The string representation of the enum value.
+     * @param mapping  A map of string values to enum constants.
+     * @param typeName A descriptive name of the enum type (used in error messages).
+     * @param <T>      The type of the enum.
+     * @return The corresponding enum constant.
+     * @throws IllegalArgumentException If the string does not match any enum value.
+     */
+    public static <T extends Enum<T>> T fromString(String value, Map<String, T> mapping, String typeName) {
+        return Optional.ofNullable(mapping.get(value))
+            .orElseThrow(() -> new IllegalArgumentException(
+                "Unsupported %s '%s'. Expected one of: %s".formatted(typeName, value, mapping.keySet())
+            ));
+    }
 
     private Enums() {
     }

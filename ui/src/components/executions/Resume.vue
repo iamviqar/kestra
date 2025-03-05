@@ -17,6 +17,9 @@
             <inputs-form :initial-inputs="inputsList" :execution="execution" v-model="inputs" />
         </el-form>
         <template #footer>
+            <el-button @click="cancel()">
+                {{ $t('cancel') }}
+            </el-button>
             <el-button :icon="PlayBox" type="primary" @click="resumeWithInputs($refs.form)" native-type="submit">
                 {{ $t('resume') }}
             </el-button>
@@ -32,7 +35,7 @@
     import {mapState} from "vuex";
     import permission from "../../models/permission";
     import action from "../../models/action";
-    import State from "../../utils/state";
+    import {State} from "@kestra-io/ui-libs"
     import FlowUtils from "../../utils/flowUtils";
     import ExecutionUtils from "../../utils/executionUtils";
     import InputsForm from "../../components/inputs/InputsForm.vue";
@@ -95,6 +98,16 @@
                     .then(() => {
                         this.isDrawerOpen = false;
                         this.$toast().success(this.$t("resumed done"));
+                    });
+            },
+            cancel() {
+                this.$store
+                    .dispatch("execution/kill", {
+                        id: this.execution.id,
+                    })
+                    .then(() => {
+                        this.isDrawerOpen = false;
+                        this.$toast().success(this.$t("killed done"));
                     });
             },
             loadDefinition() {

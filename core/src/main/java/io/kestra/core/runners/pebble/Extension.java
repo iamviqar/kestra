@@ -34,12 +34,28 @@ public class Extension extends AbstractExtension {
     private ReadFileFunction readFileFunction;
 
     @Inject
+    private FileURIFunction fileURIFunction;
+
+    @Inject
     @Nullable
     private RenderFunction renderFunction;
 
     @Inject
     @Nullable
     private RenderOnceFunction renderOnceFunction;
+
+    @Inject
+    private FileSizeFunction fileSizeFunction;
+
+    @Inject
+    private IsFileEmptyFunction isFileEmptyFunction;
+
+    @Inject
+    private FileExistsFunction fileExistsFunction;
+
+    @Inject
+    @Nullable
+    private ErrorLogsFunction errorLogsFunction;
 
     @Override
     public List<TokenParser> getTokenParsers() {
@@ -77,6 +93,7 @@ public class Extension extends AbstractExtension {
         filters.put("escapeChar", new EscapeCharFilter());
         filters.put("json", new JsonFilter());
         filters.put("toJson", new ToJsonFilter());
+        filters.put("distinct", new DistinctFilter());
         filters.put("keys", new KeysFilter());
         filters.put("number", new NumberFilter());
         filters.put("urldecode", new UrlDecoderFilter());
@@ -93,6 +110,10 @@ public class Extension extends AbstractExtension {
         filters.put("endsWith", new EndsWithFilter());
         filters.put("values", new ValuesFilter());
         filters.put("toIon", new ToIonFilter());
+        filters.put("sha1", new Sha1Filter());
+        filters.put("sha512", new Sha512Filter());
+        filters.put("md5", new Md5Filter());
+        filters.put("string", new StringFilter());
         return filters;
     }
 
@@ -117,6 +138,7 @@ public class Extension extends AbstractExtension {
         functions.put("secret", secretFunction);
         functions.put("kv", kvFunction);
         functions.put("read", readFileFunction);
+        functions.put("fileURI", fileURIFunction);
         if (this.renderFunction != null) {
             functions.put("render", renderFunction);
         }
@@ -126,9 +148,19 @@ public class Extension extends AbstractExtension {
         functions.put("encrypt", new EncryptFunction());
         functions.put("decrypt", new DecryptFunction());
         functions.put("yaml", new YamlFunction());
-        functions.put("printContext", new PrintContextFunction());
+        functions.put("printContext", new FetchContextFunction());
+        functions.put("fetchContext", new FetchContextFunction());
+        functions.put("uuid", new UUIDFunction());
+        functions.put("id", new IDFunction());
         functions.put("fromIon", new FromIonFunction());
-
+        functions.put("fileSize", fileSizeFunction);
+        if (this.errorLogsFunction != null) {
+            functions.put("errorLogs", errorLogsFunction);
+        }
+        functions.put("randomInt", new RandomIntFunction());
+        functions.put("randomPort", new RandomPortFunction());
+        functions.put("fileExists", fileExistsFunction);
+        functions.put("isFileEmpty", isFileEmptyFunction);
         return functions;
     }
 

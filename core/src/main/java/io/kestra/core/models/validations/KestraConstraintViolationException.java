@@ -5,11 +5,14 @@ import io.kestra.core.models.tasks.Task;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 
+import java.io.Serial;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class KestraConstraintViolationException extends ConstraintViolationException {
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     public KestraConstraintViolationException(Set<? extends ConstraintViolation<?>> constraintViolations) {
         super(constraintViolations);
@@ -21,11 +24,11 @@ public class KestraConstraintViolationException extends ConstraintViolationExcep
         for (ConstraintViolation<?> violation : getConstraintViolations()) {
             String errorMessage = violation.getPropertyPath() + ": " + violation.getMessage();
             try {
-                if (violation.getLeafBean() instanceof Task) {
-                    errorMessage = replaceId("tasks", violation.getPropertyPath().toString(), ((Task) violation.getLeafBean()).getId()) + ": " + violation.getMessage();
+                if (violation.getLeafBean() instanceof Task task) {
+                    errorMessage = replaceId("tasks", violation.getPropertyPath().toString(), task.getId()) + ": " + violation.getMessage();
                 }
-                if (violation.getLeafBean() instanceof Input) {
-                    errorMessage = replaceId("inputs", violation.getPropertyPath().toString(), ((Input) violation.getLeafBean()).getId()) + ": " + violation.getMessage();
+                if (violation.getLeafBean() instanceof Input input) {
+                    errorMessage = replaceId("inputs", violation.getPropertyPath().toString(), input.getId()) + ": " + violation.getMessage();
 
                 }
             } catch (Exception e) {

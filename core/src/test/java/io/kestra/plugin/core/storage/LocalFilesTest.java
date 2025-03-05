@@ -1,6 +1,7 @@
 package io.kestra.plugin.core.storage;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.IdUtils;
@@ -37,6 +38,7 @@ class LocalFilesTest {
 
         return storageInterface.put(
             null,
+            null,
             new URI("/file/storage/get.yml"),
             new FileInputStream(Objects.requireNonNull(resource).getFile())
         );
@@ -56,7 +58,7 @@ class LocalFilesTest {
                 "execution.txt", "{{toto}}",
                 "application-test.yml", storageFile.toString()
             ))
-            .outputs(List.of("hello-input.txt"))
+            .outputs(Property.of(List.of("hello-input.txt")))
             .build();
         var outputs = task.run(runContext);
 
@@ -64,14 +66,14 @@ class LocalFilesTest {
         assertThat(outputs.getUris(), notNullValue());
         assertThat(outputs.getUris().size(), is(1));
         assertThat(
-            new String(storageInterface.get(null, outputs.getUris().get("hello-input.txt")).readAllBytes()),
+            new String(storageInterface.get(null, null, outputs.getUris().get("hello-input.txt")).readAllBytes()),
             is("Hello Input")
         );
         assertThat(runContext.workingDir().path().toFile().list().length, is(2));
         assertThat(Files.readString(runContext.workingDir().path().resolve("execution.txt")), is("tata"));
         assertThat(
             Files.readString(runContext.workingDir().path().resolve("application-test.yml")),
-            is(new String(storageInterface.get(null, storageFile).readAllBytes()))
+            is(new String(storageInterface.get(null, null, storageFile).readAllBytes()))
         );
 
         runContext.cleanup();
@@ -90,7 +92,7 @@ class LocalFilesTest {
                 "test/sub/dir/2/execution.txt", "{{toto}}",
                 "test/sub/dir/3/application-test.yml", storageFile.toString()
             ))
-            .outputs(List.of("test/**"))
+            .outputs(Property.of(List.of("test/**")))
             .build();
         var outputs = task.run(runContext);
 
@@ -98,18 +100,18 @@ class LocalFilesTest {
         assertThat(outputs.getUris(), notNullValue());
         assertThat(outputs.getUris().size(), is(3));
         assertThat(
-            new String(storageInterface.get(null, outputs.getUris().get("test/hello-input.txt")).readAllBytes()),
+            new String(storageInterface.get(null, null, outputs.getUris().get("test/hello-input.txt")).readAllBytes()),
             is("Hello Input")
         );
         assertThat(
-            new String(storageInterface.get(null, outputs.getUris().get("test/sub/dir/2/execution.txt"))
+            new String(storageInterface.get(null, null, outputs.getUris().get("test/sub/dir/2/execution.txt"))
                 .readAllBytes()),
             is("tata")
         );
         assertThat(
-            new String(storageInterface.get(null, outputs.getUris().get( "test/sub/dir/3/application-test.yml"))
+            new String(storageInterface.get(null, null, outputs.getUris().get( "test/sub/dir/3/application-test.yml"))
                 .readAllBytes()),
-            is(new String(storageInterface.get(null, storageFile).readAllBytes()))
+            is(new String(storageInterface.get(null, null, storageFile).readAllBytes()))
         );
         runContext.cleanup();
     }

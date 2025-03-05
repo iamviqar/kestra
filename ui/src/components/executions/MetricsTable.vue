@@ -12,10 +12,8 @@
             <el-table
                 :data="metrics"
                 :default-sort="{prop: 'name', order: 'ascending'}"
-                stripe
                 table-layout="auto"
                 fixed
-                @row-dblclick="onRowDoubleClick"
                 @sort-change="onSort"
             >
                 <el-table-column v-if="showTask" prop="taskId" sortable :label="$t('task')">

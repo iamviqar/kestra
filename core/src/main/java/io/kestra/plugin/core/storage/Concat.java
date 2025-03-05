@@ -1,6 +1,7 @@
 package io.kestra.plugin.core.storage;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.serializers.JacksonMapper;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
@@ -48,7 +49,7 @@ import static io.kestra.core.utils.Rethrow.throwConsumer;
             code = {
                 "tasks:",
                 "  - id: each",
-                "    type: io.kestra.plugin.core.flow.EachSequential",
+                "    type: io.kestra.plugin.core.flow.ForEach",
                 "    tasks:",
                 "      - id: start_api_call",
                 "        type: io.kestra.plugin.scripts.shell.Commands",
@@ -56,7 +57,8 @@ import static io.kestra.core.utils.Rethrow.throwConsumer;
                 "          - echo {{ taskrun.value }} > {{ temp.generated }}",
                 "        files:",
                 "          - generated",
-                "    value: '[\"value1\", \"value2\", \"value3\"]'",
+                "    values: '[\"value1\", \"value2\", \"value3\"]'",
+                "",
                 "  - id: concat",
                 "    type: io.kestra.plugin.core.storage.Concat",
                 "    files:",
@@ -99,29 +101,27 @@ public class Concat extends Task implements RunnableTask<Concat.Output> {
     @Schema(
         title = "The separator to used between files, default is no separator."
     )
-    @PluginProperty(dynamic = true)
-    private String separator;
+    private Property<String> separator;
 
     @Schema(
         title = "The extension of the created file, default is .tmp."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String extension = ".tmp";
+    private Property<String> extension = Property.of(".tmp");
 
     @SuppressWarnings("unchecked")
     @Override
     public Concat.Output run(RunContext runContext) throws Exception {
-        File tempFile = runContext.workingDir().createTempFile(extension).toFile();
+        File tempFile = runContext.workingDir().createTempFile(runContext.render(extension).as(String.class).orElseThrow()).toFile();
         try (FileOutputStream fileOutputStream = new FileOutputStream(tempFile)) {
             List<String> finalFiles;
-            if (this.files instanceof List) {
-                finalFiles = (List<String>) this.files;
-            } else if (this.files instanceof String) {
+            if (this.files instanceof List<?> listValue) {
+                finalFiles = (List<String>) listValue;
+            } else if (this.files instanceof String stringValue) {
                 final TypeReference<List<String>> reference = new TypeReference<>() {};
 
                 finalFiles = JacksonMapper.ofJson(false).readValue(
-                    runContext.render((String) this.files),
+                    runContext.render(stringValue),
                     reference
                 );
             } else {
@@ -135,7 +135,7 @@ public class Concat extends Task implements RunnableTask<Concat.Output> {
                 }
 
                 if (separator != null) {
-                    IOUtils.copy(new ByteArrayInputStream(this.separator.getBytes()), fileOutputStream);
+                    IOUtils.copy(new ByteArrayInputStream(runContext.render(this.separator).as(String.class).orElseThrow().getBytes()), fileOutputStream);
                 }
             }));
         }

@@ -1,41 +1,36 @@
 <template>
+    <doc-id-display />
     <el-config-provider>
-        <left-menu v-if="configs" @menu-collapse="onMenuCollapse" />
         <error-toast v-if="message" :no-auto-hide="true" :message="message" />
-        <main v-if="loaded">
-            <router-view v-if="!error" />
-            <template v-else>
-                <errors :code="error" />
-            </template>
-        </main>
+        <component :is="$route.meta.layout ?? DefaultLayout" v-if="loaded">
+            <router-view />
+        </component>
         <VueTour />
     </el-config-provider>
 </template>
 
-<script setup>
-    import Errors from "./components/errors/Errors.vue";
-</script>
-
 <script>
     import {ElMessageBox, ElSwitch} from "element-plus";
-    import {h, ref} from "vue";
-    import LeftMenu from "override/components/LeftMenu.vue";
+    import {h, ref, shallowRef} from "vue";
     import ErrorToast from "./components/ErrorToast.vue";
     import {mapGetters, mapState} from "vuex";
     import Utils from "./utils/utils";
     import VueTour from "./components/onboarding/VueTour.vue";
+    import DefaultLayout from "./components/layout/DefaultLayout.vue";
+    import DocIdDisplay from "./components/DocIdDisplay.vue";
     import posthog from "posthog-js";
-
+    import "@kestra-io/ui-libs/style.css";
+    // Main App
     export default {
         name: "App",
         components: {
-            LeftMenu,
             ErrorToast,
             VueTour,
+            DocIdDisplay
         },
         data() {
             return {
-                menuCollapsed: "",
+                DefaultLayout: shallowRef(DefaultLayout),
                 fullPage: false,
                 created: false,
                 loaded: false,
@@ -44,16 +39,16 @@
         },
         computed: {
             ...mapState("auth", ["user"]),
-            ...mapState("core", ["message", "error"]),
-            ...mapGetters("core", ["guidedProperties"]),
+            ...mapState("core", ["message"]),
             ...mapState("flow", ["overallTotal"]),
+            ...mapGetters("core", ["guidedProperties"]),
             ...mapGetters("misc", ["configs"]),
             envName() {
                 return this.$store.getters["layout/envName"] || this.configs?.environment?.name;
             },
             isOSS(){
                 return true;
-            }
+            },
         },
         async created() {
             if (this.created === false) {
@@ -109,13 +104,8 @@
             }
         },
         methods: {
-            onMenuCollapse(collapse) {
-                document.getElementsByTagName("html")[0].classList.add(!collapse ? "menu-not-collapsed" : "menu-collapsed");
-                document.getElementsByTagName("html")[0].classList.remove(collapse ? "menu-not-collapsed" : "menu-collapsed");
-            },
             displayApp() {
-                this.onMenuCollapse(localStorage.getItem("menuCollapsed") === "true");
-                Utils.switchTheme();
+                Utils.switchTheme(this.$store);
 
                 document.getElementById("loader-wrapper").style.display = "none";
                 document.getElementById("app-container").style.display = "block";
@@ -224,5 +214,13 @@
 <style lang="scss">
 @use "styles/vendor";
 @use "styles/app";
+#app {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+#app main {
+    flex: 1;
+    overflow: auto;
+}
 </style>
-

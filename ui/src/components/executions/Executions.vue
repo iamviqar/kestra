@@ -41,23 +41,33 @@
             <template #navbar v-if="isDisplayedTop">
                 <KestraFilter
                     prefix="executions"
-                    :include="['namespace', 'state', 'scope', 'labels', 'child']"
-                    :refresh="{shown: true, canAutoRefresh, callback: refresh}"
+                    :include="['namespace', 'state', 'scope', 'labels', 'child', 'relative_date', 'absolute_date']"
+                    :buttons="{
+                        refresh: {shown: true, callback: refresh},
+                        settings: {shown: true, charts: {shown: true, value: showChart, callback: onShowChartChange}}
+                    }"
+                    :properties-width="182"
+                    :properties="{
+                        shown: true,
+                        columns: optionalColumns,
+                        displayColumns,
+                        storageKey: 'executions'
+                    }"
+                    @update-properties="updateDisplayColumns"
                 />
             </template>
 
             <template #top>
-                <el-card v-if="showStatChart()" shadow="never" class="mb-4">
+                <el-card v-if="showStatChart()" class="mb-4 shadow">
                     <ExecutionsBar v-if="daily" :data="daily" :total="executionsCount" />
                 </el-card>
             </template>
 
-            <template #table v-if="executions.length">
+            <template #table v-if="executions?.length">
                 <select-table
                     ref="selectTable"
                     :data="executions"
                     :default-sort="{prop: 'state.startDate', order: 'descending'}"
-                    stripe
                     table-layout="auto"
                     fixed
                     @row-dblclick="row => onRowDoubleClick(executionParams(row))"
@@ -73,14 +83,15 @@
                             @update:select-all="toggleAllSelection"
                             @unselect="toggleAllUnselected"
                         >
+                            <!-- Always visible buttons -->
+                            <el-button v-if="canUpdate" :icon="StateMachine" @click="changeStatusDialogVisible = !changeStatusDialogVisible">
+                                {{ $t("change state") }}
+                            </el-button>
                             <el-button v-if="canUpdate" :icon="Restart" @click="restartExecutions()">
                                 {{ $t("restart") }}
                             </el-button>
                             <el-button v-if="canCreate" :icon="PlayBoxMultiple" @click="replayExecutions()">
                                 {{ $t("replay") }}
-                            </el-button>
-                            <el-button v-if="canUpdate" :icon="StateMachine" @click="changeStatusDialogVisible = !changeStatusDialogVisible">
-                                {{ $t("change state") }}
                             </el-button>
                             <el-button v-if="canUpdate" :icon="StopCircleOutline" @click="killExecutions()">
                                 {{ $t("kill") }}
@@ -88,25 +99,32 @@
                             <el-button v-if="canDelete" :icon="Delete" @click="deleteExecutions()">
                                 {{ $t("delete") }}
                             </el-button>
-                            <el-button
-                                v-if="canUpdate"
-                                :icon="LabelMultiple"
-                                @click="isOpenLabelsModal = !isOpenLabelsModal"
-                            >
-                                {{ $t("Set labels") }}
-                            </el-button>
-                            <el-button v-if="canUpdate" :icon="PlayBox" @click="resumeExecutions()">
-                                {{ $t("resume") }}
-                            </el-button>
-                            <el-button v-if="canUpdate" :icon="PauseBox" @click="pauseExecutions()">
-                                {{ $t("pause") }}
-                            </el-button>
-                            <el-button v-if="canUpdate" :icon="QueueFirstInLastOut" @click="unqueueExecutions()">
-                                {{ $t("unqueue") }}
-                            </el-button>
-                            <el-button v-if="canUpdate" :icon="RunFast" @click="forceRunExecutions()">
-                                {{ $t("force run") }}
-                            </el-button>
+
+                            <!-- Dropdown with additional actions -->
+                            <el-dropdown>
+                                <el-button>
+                                    <DotsVertical />
+                                </el-button>
+                                <template #dropdown>
+                                    <el-dropdown-menu>
+                                        <el-dropdown-item v-if="canUpdate" :icon="LabelMultiple" @click=" isOpenLabelsModal = !isOpenLabelsModal">
+                                            {{ $t("Set labels") }}
+                                        </el-dropdown-item>
+                                        <el-dropdown-item v-if="canUpdate" :icon="PlayBox" @click="resumeExecutions()">
+                                            {{ $t("resume") }}
+                                        </el-dropdown-item>
+                                        <el-dropdown-item v-if="canUpdate" :icon="PauseBox" @click="pauseExecutions()">
+                                            {{ $t("pause") }}
+                                        </el-dropdown-item>
+                                        <el-dropdown-item v-if="canUpdate" :icon="QueueFirstInLastOut" @click="unqueueExecutions()">
+                                            {{ $t("unqueue") }}
+                                        </el-dropdown-item>
+                                        <el-dropdown-item v-if="canUpdate" :icon="RunFast" @click="forceRunExecutions()">
+                                            {{ $t("force run") }}
+                                        </el-dropdown-item>
+                                    </el-dropdown-menu>
+                                </template>
+                            </el-dropdown>
                         </bulk-select>
                         <el-dialog
                             v-if="isOpenLabelsModal"
@@ -237,7 +255,7 @@
 
                         <el-table-column
                             prop="flowRevision"
-                            v-if="displayColumn('flowRevision')"
+                            v-if="displayColumn('revision')"
                             :label="$t('revision')"
                             class-name="shrink"
                         >
@@ -282,10 +300,14 @@
                             </template>
                         </el-table-column>
 
-                        <el-table-column column-key="action" class-name="row-action">
+                        <el-table-column 
+                            column-key="action" 
+                            class-name="row-action"
+                            :label="$t('actions')"
+                        >
                             <template #default="scope">
                                 <router-link
-                                    :to="{name: 'executions/update', params: {namespace: scope.row.namespace, flowId: scope.row.flowId, id: scope.row.id}}"
+                                    :to="{name: 'executions/update', params: {namespace: scope.row.namespace, flowId: scope.row.flowId, id: scope.row.id}, query: {revision: scope.row.flowRevision}}"
                                 >
                                     <kicon :tooltip="$t('details')" placement="left">
                                         <TextSearch />
@@ -344,6 +366,7 @@
     import SelectTable from "../layout/SelectTable.vue";
     import PlayBox from "vue-material-design-icons/PlayBox.vue";
     import PlayBoxMultiple from "vue-material-design-icons/PlayBoxMultiple.vue";
+    import DotsVertical from "vue-material-design-icons/DotsVertical.vue";
     import Restart from "vue-material-design-icons/Restart.vue";
     import Delete from "vue-material-design-icons/Delete.vue";
     import StopCircleOutline from "vue-material-design-icons/StopCircleOutline.vue";
@@ -352,7 +375,7 @@
     import LabelMultiple from "vue-material-design-icons/LabelMultiple.vue";
     import StateMachine from "vue-material-design-icons/StateMachine.vue";
     import PauseBox from "vue-material-design-icons/PauseBox.vue";
-    import KestraFilter from "../filter/Wrapper.vue"
+    import KestraFilter from "../filter/KestraFilter.vue"
     import QueueFirstInLastOut from "vue-material-design-icons/QueueFirstInLastOut.vue";
     import RunFast from "vue-material-design-icons/RunFast.vue";
 </script>
@@ -369,7 +392,7 @@
     import Kicon from "../Kicon.vue"
     import Labels from "../layout/Labels.vue"
     import RestoreUrl from "../../mixins/restoreUrl";
-    import State from "../../utils/state";
+    import {State} from "@kestra-io/ui-libs"
     import Id from "../Id.vue";
     import _merge from "lodash/merge";
     import permission from "../../models/permission";
@@ -380,6 +403,7 @@
     import {ElMessageBox, ElSwitch, ElFormItem, ElAlert, ElCheckbox} from "element-plus";
     import {h, ref} from "vue";
     import ExecutionsBar from "../../components/dashboard/components/charts/executions/Bar.vue"
+    import DateAgo from "../layout/DateAgo.vue";
 
     import {filterLabels} from "./utils"
 
@@ -395,7 +419,8 @@
             TriggerFlow,
             TopNavBar,
             LabelInput,
-            ExecutionsBar
+            ExecutionsBar,
+            DateAgo
         },
         emits: ["state-count"],
         props: {
@@ -448,69 +473,63 @@
                 showChart: ["true", null].includes(localStorage.getItem(storageKeys.SHOW_CHART)),
                 optionalColumns: [
                     {
-                        label: "start date",
+                        label: this.$t("start date"),
                         prop: "state.startDate",
                         default: true
                     },
                     {
-                        label: "end date",
+                        label: this.$t("end date"),
                         prop: "state.endDate",
                         default: true
                     },
                     {
-                        label: "duration",
+                        label: this.$t("duration"),
                         prop: "state.duration",
                         default: true
                     },
                     {
-                        label: "state",
-                        prop: "state.current",
-                        default: true
-                    },
-                    {
-                        label: "triggers",
-                        prop: "triggers",
-                        default: true
-                    },
-                    {
-                        label: "labels",
-                        prop: "labels",
-                        default: true
-                    },
-                    {
-                        label: "inputs",
-                        prop: "inputs",
-                        default: false
-                    },
-                    {
-                        label: "namespace",
+                        label: this.$t("namespace"),
                         prop: "namespace",
                         default: true
                     },
                     {
-                        label: "flow",
+                        label: this.$t("flow"),
                         prop: "flowId",
                         default: true
                     },
                     {
-                        label: "revision",
+                        label: this.$t("labels"),
+                        prop: "labels",
+                        default: true
+                    },
+                    {
+                        label: this.$t("state"),
+                        prop: "state.current",
+                        default: true
+                    },
+                    {
+                        label: this.$t("revision"),
                         prop: "flowRevision",
                         default: false
                     },
                     {
-                        label: "task id",
+                        label: this.$t("inputs"),
+                        prop: "inputs",
+                        default: false
+                    },
+                    {
+                        label: this.$t("task id"),
                         prop: "taskRunList.taskId",
                         default: false
                     }
                 ],
                 displayColumns: [],
                 childFilter: "ALL",
-                canAutoRefresh: false,
                 storageKey: storageKeys.DISPLAY_EXECUTIONS_COLUMNS,
                 isOpenLabelsModal: false,
                 executionLabels: [],
                 actionOptions: {},
-                refreshDates: false,
+                lastRefreshDate: new Date(),
                 changeStatusDialogVisible: false,
                 selectedStatus: undefined
             };
@@ -521,7 +540,7 @@
                 this.storageKey = storageKeys.DISPLAY_FLOW_EXECUTIONS_COLUMNS;
                 this.optionalColumns = this.optionalColumns.filter(col => col.prop !== "namespace" && col.prop !== "flowId")
             }
-            this.displayColumns = localStorage.getItem(this.storageKey)?.split(",")
+            this.displayColumns = localStorage.getItem("columns_executions")?.split(",")
                 || this.optionalColumns.filter(col => col.default).map(col => col.prop);
             if (this.isConcurrency) {
                 this.emitStateCount([State.RUNNING, State.PAUSED])
@@ -545,8 +564,7 @@
                 return undefined;
             },
             startDate() {
-                this.refreshDates;
-                if (this.$route.query.startDate) {
+                if (this.$route.query.startDate && this.lastRefreshDate) {
                     return this.$route.query.startDate;
                 }
                 if (this.$route.query.timeRange) {
@@ -579,9 +597,6 @@
             },
             isDisplayedTop() {
                 return this.embed === false && this.filter
-            },
-            filterStorageKey() {
-                return storageKeys.EXECUTIONS_FILTERS
             },
             states() {
                 return [ State.FAILED, State.SUCCESS, State.WARNING, State.CANCELLED,].map(value => {
@@ -637,6 +652,9 @@
             },
             displayColumn(column) {
                 return this.hidden ? !this.hidden.includes(column) : this.displayColumns.includes(column);
+            },
+            updateDisplayColumns(newColumns) {
+                this.displayColumns = newColumns;
             },
             onShowChartChange(value) {
                 this.showChart = value;
@@ -697,7 +715,7 @@
                     });
             },
             loadData(callback) {
-                this.refreshDates = !this.refreshDates;
+                this.lastRefreshDate = new Date();
                 if (this.showStatChart()) {
                     this.loadStats();
                 }
@@ -708,9 +726,6 @@
                     sort: this.$route.query.sort || "state.startDate:desc",
                     state: this.$route.query.state ? [this.$route.query.state] : this.statuses
                 }, false)).finally(callback);
-            },
-            onDateFilterTypeChange(event) {
-                this.canAutoRefresh = event;
             },
             durationFrom(item) {
                 return (+new Date() - new Date(item.state.startDate).getTime()) / 1000
@@ -830,18 +845,18 @@
                         h(ElSwitch, {
                             modelValue: includeNonTerminated.value,
                             "onUpdate:modelValue": (val) => {
-                                includeNonTerminated.value = val
+                                includeNonTerminated.value = val;
                             },
                         }),
                     ]),
-                    h(ElAlert, {
-                        title:  this.$t("execution-warn-title"),
+                    includeNonTerminated.value ? h(ElAlert, {
+                        title: this.$t("execution-warn-title"),
                         description: this.$t("execution-warn-deleting-still-running"),
                         type: "warning",
                         showIcon: true,
                         closable: false,
                         class: "custom-warning"
-                    }),
+                    }) : null,
                     h(ElCheckbox, {
                         modelValue: deleteLogs.value,
                         label: this.$t("execution_deletion.logs"),
@@ -872,7 +887,7 @@
                         "execution/queryDeleteExecution",
                         "execution/bulkDeleteExecution",
                         "executions deleted"
-                    )
+                    );
                 });
             },
             killExecutions() {
@@ -931,7 +946,7 @@
                     name: "flows/update", params: {
                         namespace: this.flow.namespace,
                         id: this.flow.id,
-                        tab: "editor",
+                        tab: "edit",
                         tenant: this.$route.params.tenant
                     }
                 })
@@ -959,6 +974,10 @@
 
 
 <style scoped lang="scss">
+.shadow {
+    box-shadow: 0px 2px 4px 0px var(--ks-card-shadow);
+}
+
 .padding-bottom {
     padding-bottom: 4rem;
 }

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.Plugin;
 import io.kestra.core.models.WorkerJobLifecycle;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.core.runner.Process;
 import jakarta.validation.constraints.NotBlank;
@@ -16,11 +17,11 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.apache.commons.lang3.SystemUtils;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.io.IOException;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 import static io.kestra.core.utils.WindowsUtils.windowsToUnixPath;
 
@@ -32,7 +33,7 @@ import static io.kestra.core.utils.WindowsUtils.windowsToUnixPath;
 @Getter
 @NoArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
-public abstract class TaskRunner implements Plugin, WorkerJobLifecycle {
+public abstract class TaskRunner<T extends TaskRunnerDetailResult> implements Plugin, WorkerJobLifecycle {
     @NotBlank
     @Pattern(regexp="\\p{javaJavaIdentifierStart}\\p{javaJavaIdentifierPart}*(\\.\\p{javaJavaIdentifierStart}\\p{javaJavaIdentifierPart}*)*")
     protected String type;
@@ -62,7 +63,7 @@ public abstract class TaskRunner implements Plugin, WorkerJobLifecycle {
      * For remote task runner (like Kubernetes or in a cloud provider), <code>filesToUpload</code> must be used to upload input and namespace files to the runner,
      * and <code>filesToDownload</code> must be used to download output files from the runner.
      */
-    public abstract RunnerResult run(RunContext runContext, TaskCommands taskCommands, List<String> filesToDownload) throws Exception;
+    public abstract TaskRunnerResult<T> run(RunContext runContext, TaskCommands taskCommands, List<String> filesToDownload) throws Exception;
 
     public Map<String, Object> additionalVars(RunContext runContext, TaskCommands taskCommands) throws IllegalVariableEvaluationException {
         if (this.additionalVars == null) {
