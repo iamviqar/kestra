@@ -28,7 +28,7 @@
                 />
 
                 <el-dropdown-item
-                    @click="selectDashboard(null)"
+                    @click="selectDashboard({id: 'default'})"
                     :class="{'mt-3': filtered.length < 10}"
                 >
                     <small>{{ t("default_dashboard") }}</small>
@@ -77,6 +77,7 @@
     import {useI18n} from "vue-i18n";
     import {useStore} from "vuex";
     import {useRouter, useRoute} from "vue-router";
+    import {storageKeys} from "../../../utils/constants";
 
     const {t} = useI18n({useScope: "global"});
     const store = useStore();
@@ -108,9 +109,16 @@
 
     const selectedDashboard = ref(null)
 
+    const DASHBOARD_KEY = storageKeys.DASHBORD_SELECTED + (routeTenant.value ? `_${routeTenant.value}` : "")
+
     const selectDashboard = (dashboard: any) => {
         selectedDashboard.value = dashboard?.title;
-        emits("dashboard", dashboard)
+        if (dashboard?.id) {
+            localStorage.setItem(DASHBOARD_KEY, dashboard.id);
+        } else {
+            localStorage.removeItem(DASHBOARD_KEY);
+        }
+        emits("dashboard", dashboard.id)
     }
 
     const editDashboard = (dashboard: any) => {
@@ -122,15 +130,24 @@
             .dispatch("dashboard/list", {})
             .then((response: { results: { id: string; title: string }[] }) => {
                 dashboards.value = response.results;
-                if (route.params?.id) {
-                    const dashboard = dashboards.value.find(d => d.id === route.params.id);
+
+                const creation = Boolean(route.query.created);
+                const lastSelected = creation ? route.params?.id : (fetchLastDashboard() ?? route.params?.id);
+
+                if (lastSelected) {
+                    const dashboard = dashboards.value.find(d => d.id === lastSelected);
                     if (dashboard) {
-                        selectedDashboard.value = dashboard.title;
+                        selectDashboard(dashboard);
                     } else {
                         selectedDashboard.value = null;
+                        emits("dashboard", "default")
                     }
                 }
             });
+    }
+
+    const fetchLastDashboard = () => {
+        return localStorage.getItem(DASHBOARD_KEY)
     }
 
     onBeforeMount(() => {
@@ -152,7 +169,7 @@
 
 .dropdown {
     width: 300px;
-    background: var(--ks-select-background);
+    background: var(ks-select-background);
 
     :deep(li.el-dropdown-menu__item) {
         &:hover,

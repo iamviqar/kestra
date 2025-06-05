@@ -2,12 +2,14 @@
     <Timeline :histories="execution.state.histories" />
     <div v-if="execution" class="execution-overview">
         <div v-if="isFailed()">
-            <el-alert type="error" :closable="false" class="mb-4 main-error">
+            <el-alert type="error" :closable="false" show-icon class="mb-4 main-error">
                 <template #title>
                     <div @click="isExpanded = !isExpanded">
-                        <alert class="main-icon" />
-                        {{ $t('execution failed header', errorLast ? 0 : 1, {message: errorLast?.message}) }}
-                        <span v-if="errorLast" v-html="$t('execution failed message', {message: errorLast?.message})" />
+                        <Markdown
+                            v-if="errorLast && errorLast.message"
+                            :source="errorMessage"
+                            :html="false"
+                        />
                         <span class="toggle-icon" v-if="errorLogs">
                             <chevron-up v-if="isExpanded" />
                             <chevron-down v-else />
@@ -66,12 +68,11 @@
                 <restart is-replay :execution="execution" @follow="forwardEvent('follow', $event)" />
                 <restart :execution="execution" @follow="forwardEvent('follow', $event)" />
                 <change-execution-status :execution="execution" @follow="forwardEvent('follow', $event)" />
-                <resume :execution="execution" />
-                <pause :execution="execution" />
-                <kill :execution="execution" />
+                <pause v-if="execution.state.current !== 'PAUSED'" :execution="execution" />
                 <unqueue :execution="execution" />
                 <force-run :execution="execution" />
-                <status :status="execution.state.current" />
+                <resume :execution="execution" />
+                <kill :execution="execution" />
             </el-col>
         </el-row>
 
@@ -91,6 +92,9 @@
                     </span>
                     <span v-else-if="scope.row.duration">
                         <duration :histories="scope.row.value" />
+                    </span>
+                    <span v-else-if="scope.row.key === $t('state')">
+                        <status :status="scope.row.value" />
                     </span>
                     <span v-else-if="scope.row.key === $t('labels')">
                         <labels :labels="scope.row.value" read-only />
@@ -132,6 +136,7 @@
         <div v-if="execution.trigger" class="my-5">
             <h5>{{ $t("trigger") }}</h5>
             <KestraCascader
+                id="triggers"
                 :options="transform({...execution.trigger, ...(execution.trigger.trigger ? execution.trigger.trigger : {})})"
                 :execution
                 class="overflow-auto"
@@ -141,6 +146,7 @@
         <div v-if="execution.inputs" class="my-5">
             <h5>{{ $t("inputs") }}</h5>
             <KestraCascader
+                id="inputs"
                 :options="transform(execution.inputs)"
                 :execution
                 class="overflow-auto"
@@ -150,6 +156,7 @@
         <div v-if="execution.variables" class="my-5">
             <h5>{{ $t("variables") }}</h5>
             <KestraCascader
+                id="variables"
                 :options="transform(execution.variables)"
                 :execution
                 class="overflow-auto"
@@ -159,6 +166,7 @@
         <div v-if="execution.outputs" class="my-5">
             <h5>{{ $t("outputs") }}</h5>
             <KestraCascader
+                id="outputs"
                 :options="transform(execution.outputs)"
                 :execution
                 class="overflow-auto"
@@ -190,6 +198,7 @@
     import ChevronUp from "vue-material-design-icons/ChevronUp.vue";
     import ChevronLeft from "vue-material-design-icons/ChevronLeft.vue";
     import ChevronRight from "vue-material-design-icons/ChevronRight.vue";
+    import Markdown from "../../components/layout/Markdown.vue";
 
     export default {
         components: {
@@ -212,7 +221,8 @@
             ChevronDown,
             ChevronUp,
             ChevronLeft,
-            ChevronRight
+            ChevronRight,
+            Markdown
         },
         emits: ["follow"],
         methods: {
@@ -390,6 +400,9 @@
         },
         computed: {
             ...mapState("execution", ["flow", "execution"]),
+            errorMessage() {
+                return `${this.$t("execution_failed")}: ${this.errorLast?.message}`;
+            },
             items() {
                 if (!this.execution) {
                     return []
@@ -398,6 +411,7 @@
                     ? this.execution.taskRunList.length
                     : 0;
                 let ret = [
+                    {key: this.$t("state"), value: this.execution.state.current},
                     {key: this.$t("namespace"), value: this.execution.namespace},
                     {key: this.$t("flow"), value: this.execution.flowId},
                     {
@@ -461,20 +475,6 @@
 
 <style lang="scss">
 .execution-overview {
-    .cascader {
-        &::-webkit-scrollbar {
-            height: 5px;
-        }
-
-        &::-webkit-scrollbar-track {
-            background: var(--ks-background-card);
-        }
-
-        &::-webkit-scrollbar-thumb {
-            background: var(--ks-button-background-primary);
-            border-radius: 0px;
-        }
-    }
 
     .wrapper {
         background: var(--ks-background-card);
@@ -539,7 +539,11 @@
 
 .el-alert.main-error {
     background-color: var(--ks-background-error) !important;
-    padding: 0.5rem;
+    padding: 1rem;
+
+    .el-alert__icon.is-big {
+        margin-right: 1rem;
+    }
 
     .el-button{
         color: var(--ks-log-content-error);

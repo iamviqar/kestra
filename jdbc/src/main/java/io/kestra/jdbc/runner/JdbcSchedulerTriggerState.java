@@ -57,6 +57,18 @@ public class JdbcSchedulerTriggerState implements SchedulerTriggerStateInterface
     }
 
     @Override
+    public Trigger create(Trigger trigger, String headerContent) {
+        return this.triggerRepository.create(trigger);
+    }
+
+    @Override
+    public Trigger save(Trigger trigger, ScheduleContextInterface scheduleContextInterface, String headerContent) {
+        this.triggerRepository.save(trigger, scheduleContextInterface);
+
+        return trigger;
+    }
+
+    @Override
     public Trigger create(Trigger trigger) {
         return this.triggerRepository.create(trigger);
     }
@@ -85,6 +97,11 @@ public class JdbcSchedulerTriggerState implements SchedulerTriggerStateInterface
     @Override
     public List<Trigger> findByNextExecutionDateReadyForAllTenants(ZonedDateTime now, ScheduleContextInterface scheduleContext) {
         return this.triggerRepository.findByNextExecutionDateReadyForAllTenants(now, scheduleContext);
+    }
+
+    @Override
+    public List<Trigger> findByNextExecutionDateReadyButLockedTriggers(ZonedDateTime now) {
+        return this.triggerRepository.findByNextExecutionDateReadyButLockedTriggers(now);
     }
 
     @Override

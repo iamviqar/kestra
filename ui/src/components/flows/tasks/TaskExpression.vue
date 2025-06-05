@@ -5,13 +5,15 @@
         :full-height="false"
         :input="true"
         lang="yaml"
+        :placeholder="`Your ${root || 'value'} here...`"
         @update:model-value="editorInput"
+        :large-suggestions="false"
     />
 </template>
 <script>
     import Task from "./Task";
     import Editor from "../../../components/inputs/Editor.vue";
-    import YamlUtils from "../../../utils/yamlUtils";
+    import {YamlUtils as YAML_UTILS} from "@kestra-io/ui-libs";
 
     export default {
         mixins: [Task],
@@ -34,8 +36,14 @@
                     return value;
                 }
 
-                return YamlUtils.parse(value);
+                return YAML_UTILS.parse(value);
             }
         }
     };
 </script>
+
+<style lang="scss" scoped>
+:deep(.placeholder) {
+    top: -7px !important;
+}
+</style>

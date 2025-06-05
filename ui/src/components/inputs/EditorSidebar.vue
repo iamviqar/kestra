@@ -1,6 +1,5 @@
 <template>
     <div
-        v-show="explorerVisible"
         class="p-2 sidebar"
         @click="$refs.tree.setCurrentKey(undefined)"
         @contextmenu.prevent="onTabContextMenu"
@@ -120,8 +119,7 @@
             @node-click="
                 (data, node) =>
                     data.leaf
-                        ? changeOpenedTabs({
-                            action: 'open',
+                        ? openTab({
                             name: data.fileName,
                             extension: data.fileName.split('.').pop(),
                             path: getPath(node),
@@ -179,6 +177,9 @@
                             </el-dropdown-item>
                             <el-dropdown-item @click="copyPath(data)">
                                 {{ $t("namespace files.path.copy") }}
+                            </el-dropdown-item>
+                            <el-dropdown-item v-if="data.leaf" @click="exportFile(node, data)">
+                                {{ $t("namespace files.export_single") }}
                             </el-dropdown-item>
                             <el-dropdown-item
                                 @click="
@@ -421,11 +422,14 @@
                 explorerVisible: (state) => state.editor.explorerVisible,
                 treeRefresh: (state) => state.editor.treeRefresh,
             }),
+            namespaceId() {
+                return this.currentNS ?? this.$route.params.namespace;
+            },
             folders() {
                 function extractPaths(basePath = "", array) {
                     const paths = [];
 
-                    array.forEach((item) => {
+                    array?.forEach((item) => {
                         if (item.type === "Directory") {
                             const folderPath = `${basePath}${item.fileName}`;
                             paths.push(folderPath);
@@ -446,7 +450,11 @@
         methods: {
             ...mapMutations("editor", [
                 "toggleExplorerVisibility",
-                "changeOpenedTabs",
+                "setTabDirty",
+            ]),
+            ...mapActions("editor", [
+                "openTab",
+                "closeTab",
             ]),
             ...mapActions("namespace", [
                 "createDirectory",
@@ -499,7 +507,7 @@
             async loadNodes(node, resolve) {
                 if (node.level === 0) {
                     const payload = {
-                        namespace: this.currentNS ?? this.$route.params.namespace,
+                        namespace: this.namespaceId,
                     };
                     const items = await this.readDirectory(payload);
 
@@ -509,7 +517,7 @@
                     resolve(this.items);
                 } else if (node.level >= 1) {
                     const payload = {
-                        namespace: this.currentNS ?? this.$route.params.namespace,
+                        namespace: this.namespaceId,
                         path: this.getPath(node),
                     };
 
@@ -548,7 +556,7 @@
                 if (!value) return;
 
                 const results = await this.searchFiles({
-                    namespace: this.currentNS ?? this.$route.params.namespace,
+                    namespace: this.namespaceId,
                     query: value,
                 });
                 this.searchResults = results.map((result) =>
@@ -557,8 +565,7 @@
                 return this.searchResults;
             },
             chooseSearchResults(item) {
-                this.changeOpenedTabs({
-                    action: "open",
+                this.openTab({
                     name: item.split("/").pop(),
                     extension: item.split(".").pop(),
                     path: item,
@@ -622,7 +629,7 @@
                 const start = path.substring(0, path.lastIndexOf("/") + 1);
 
                 this.renameFileDirectory({
-                    namespace: this.currentNS ?? this.$route.params.namespace,
+                    namespace: this.namespaceId,
                     old: `${start}${this.renameDialog.old}`,
                     new: `${start}${this.renameDialog.name}`,
                     type: this.renameDialog.type,
@@ -635,7 +642,7 @@
             async nodeMoved(draggedNode) {
                 try {
                     await this.moveFileDirectory({
-                        namespace: this.currentNS ?? this.$route.params.namespace,
+                        namespace: this.namespaceId,
                         old: this.nodeBeforeDrag.path,
                         new: this.getPath(draggedNode.data.id),
                         type: draggedNode.data.type,
@@ -717,7 +724,7 @@
 
                             this.importFileDirectory({
                                 namespace:
-                                    this.currentNS ?? this.$route.params.namespace,
+                                    this.namespaceId,
                                 content,
                                 path: `${folderPath}/${fileName}`,
                             });
@@ -740,7 +747,7 @@
 
                             this.importFileDirectory({
                                 namespace:
-                                    this.currentNS ?? this.$route.params.namespace,
+                                    this.namespaceId,
                                 content,
                                 path: file.name,
                             });
@@ -770,7 +777,7 @@
             },
             exportFiles() {
                 this.exportFileDirectory({
-                    namespace: this.currentNS ?? this.$route.params.namespace,
+                    namespace: this.namespaceId,
                 });
             },
             async addFile({file, creation, shouldReset = true}) {
@@ -806,15 +813,14 @@
                         return;
                     }
                     await this.createFile({
-                        namespace: this.currentNS ?? this.$route.params.namespace,
+                        namespace: this.namespaceId,
                         path,
                         content,
                         name: NAME,
                         creation: true,
                     });
 
-                    this.changeOpenedTabs({
-                        action: "open",
+                    this.openTab({
                         name: NAME,
                         path,
                         extension: extension,
@@ -898,7 +904,7 @@
                 } = this.confirmation;
 
                 await this.deleteFileDirectory({
-                    namespace: this.currentNS ?? this.$route.params.namespace,
+                    namespace: this.namespaceId,
                     path: this.getPath(node),
                     name: data.fileName,
                     type: data.type,
@@ -906,8 +912,7 @@
 
                 this.$refs.tree.remove(data.id);
 
-                this.changeOpenedTabs({
-                    action: "close",
+                this.closeTab({
                     name: data.fileName,
                 });
 
@@ -937,7 +942,7 @@
                     }${fileName}`;
 
                     await this.createDirectory({
-                        namespace: this.currentNS ?? this.$route.params.namespace,
+                        namespace: this.namespaceId,
                         path,
                         name: fileName,
                     });
@@ -1030,6 +1035,15 @@
                     this.$toast().error(this.$t("namespace files.path.error"));
                 }
             },
+            async exportFile(node, data){
+                const content = await  this.$store.dispatch("namespace/readFile", {
+                    path: this.getPath(node),
+                    namespace: this.namespaceId,
+                })
+
+                const blob = new Blob([content], {type: "text/plain"});
+                Utils.downloadUrl(window.URL.createObjectURL(blob), data.fileName);
+            },
             onTabContextMenu(event) {
                 this.tabContextMenu = {
                     visible: true,
@@ -1048,8 +1062,7 @@
             flow: {
                 handler(flow) {
                     if (flow) {
-                        this.changeOpenedTabs({
-                            action: "open",
+                        this.openTab({
                             name: "Flow",
                             path: "Flow.yaml",
                             persistent: true,
@@ -1065,7 +1078,7 @@
                     if (this.$refs.tree) {
                         this.items = undefined;
                         const items = await this.readDirectory({
-                            namespace: this.currentNS ?? this.$route.params.namespace
+                            namespace: this.namespaceId
                         });
                         this.renderNodes(items);
                         this.items = this.sorted(this.items);
@@ -1081,7 +1094,7 @@
 @import "@kestra-io/ui-libs/src/scss/variables";
 
 .sidebar {
-    background: var(--ks-background-card);
+    background: var(--ks-background-panel);
     border-right: 1px solid var(--ks-border-primary);
     overflow-x: hidden;
     min-width: calc(20% - 11px);
@@ -1150,7 +1163,7 @@
             height: 30px;
             padding: 16px;
             font-size: var(--el-font-size-small);
-            color: $gray-900;
+            color: var(--ks-content-primary);
 
             &:hover {
                 color: var(--ks-content-secondary);
@@ -1161,18 +1174,10 @@
     :deep(.el-tree) {
         height: calc(100% - 64px);
         overflow: auto;
+        background: var(--ks-background-panel);
 
         .el-tree__empty-block {
             height: auto;
-        }
-
-        &::-webkit-scrollbar-thumb {
-            background: var(--ks-button-background-primary);
-            border-radius: 5px;
-
-            html.dark & {
-                background:  var(--ks-button-background-primary);
-            }
         }
 
         .node {
@@ -1183,13 +1188,14 @@
         .el-tree-node__content {
             margin-bottom: 2px !important;
             padding-left: 0 !important;
+            border: 1px solid transparent;
 
             &:last-child{
                 margin-bottom: 0px;
             }
 
             &:hover{
-                border: 1px solid $primary;
+                border: 1px solid var(--ks-border-active);
             }
         }
 

@@ -96,8 +96,12 @@ abstract public class AbstractCommand implements Callable<Integer> {
         if (this.pluginsPath != null && loadExternalPlugins()) {
             pluginRegistry = pluginRegistryProvider.get();
             pluginRegistry.registerIfAbsent(pluginsPath);
-            PluginManager manager = pluginManagerProvider.get();
-            manager.start();
+
+            // PluginManager mus only be initialized if a registry is also instantiated
+            if (isPluginManagerEnabled()) {
+                PluginManager manager = pluginManagerProvider.get();
+                manager.start();
+            }
         }
 
         startWebserver();
@@ -111,6 +115,17 @@ abstract public class AbstractCommand implements Callable<Integer> {
      * @return {@code true} if external plugins must be loaded.
      */
     protected boolean loadExternalPlugins() {
+        return true;
+    }
+
+    /**
+     * Specifies whether the {@link PluginManager} service must be initialized.
+     * <p>
+     * This method can be overridden by concrete commands.
+     *
+     * @return {@code true} if the {@link PluginManager} service must be initialized.
+     */
+    protected boolean isPluginManagerEnabled() {
         return true;
     }
 
@@ -165,7 +180,6 @@ abstract public class AbstractCommand implements Callable<Integer> {
                         logger.getName().startsWith("io.kestra") &&
                             !logger.getName().startsWith("io.kestra.ee.runner.kafka.services"))
                 )
-                    || logger.getName().startsWith("flow")
             )
             .forEach(
                 logger -> logger.setLevel(ch.qos.logback.classic.Level.valueOf(this.logLevel.name()))
@@ -215,10 +229,12 @@ abstract public class AbstractCommand implements Callable<Integer> {
         return false;
     }
 
-    protected void shutdownHook(Rethrow.RunnableChecked<Exception> run) {
+    protected void shutdownHook(boolean logShutdown, Rethrow.RunnableChecked<Exception> run) {
         Runtime.getRuntime().addShutdownHook(new Thread(
             () -> {
-                log.warn("Receiving shutdown ! Try to graceful exit");
+                if (logShutdown) {
+                    log.warn("Receiving shutdown ! Try to graceful exit");
+                }
                 try {
                     run.run();
                 } catch (Exception e) {

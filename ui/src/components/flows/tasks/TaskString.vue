@@ -4,28 +4,50 @@
             :model-value="durationValue"
             type="time"
             :default-value="defaultDuration"
+            :placeholder="`Choose a${/^[aeiou]/i.test(root || '') ? 'n' : ''} ${root || 'duration'}`"
             @update:model-value="onInputDuration"
         />
     </template>
     <template v-else>
         <editor
+            v-if="!disabled"
             :model-value="editorValue"
             :navbar="false"
             :full-height="false"
+            :should-focus="false"
             schema-type="flow"
             lang="plaintext"
             input
+            :placeholder="`Your ${root || 'value'} here...`"
             @update:model-value="onInput"
+            :large-suggestions="false"
+        />
+        <InputText
+            v-else
+            :model-value="modelValue"
+            disabled
+            class="w-100"
         />
     </template>
 </template>
+<script setup>
+    import Editor from "../../../components/inputs/Editor.vue";
+    import InputText from "../../code/components/inputs/InputText.vue";
+
+</script>
 <script>
     import Task from "./Task";
-    import Editor from "../../../components/inputs/Editor.vue";
 
     export default {
+        inheritAttrs: false,
         mixins: [Task],
         components: {Editor},
+        props:{
+            disabled: {
+                type: Boolean,
+                default: false,
+            },
+        },
         emits: ["update:modelValue"],
         computed: {
             isValid() {
@@ -74,6 +96,20 @@
 
                 this.$emit("update:modelValue", emitted);
             },
+            onInput(value) {
+                this.$emit("update:modelValue", value);
+            },
         },
     };
 </script>
+
+<style lang="scss" scoped>
+:deep(.el-input__inner) {
+    &::placeholder {
+        color: var(--ks-content-inactive) !important;
+    }
+}
+:deep(.placeholder) {
+    top: -7px !important;
+}
+</style>

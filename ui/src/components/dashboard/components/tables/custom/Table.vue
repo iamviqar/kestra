@@ -1,29 +1,81 @@
 <template>
     <template v-if="data !== undefined">
-        <el-table :id="containerID" :data="data.results" :height="240">
+        <el-table
+            :id="containerID"
+            :data="data.results"
+            :height="240"
+            size="small"
+        >
             <el-table-column
-                v-for="(column, index) in Object.entries(props.chart.data.columns)"
-                :key="index"
-                :label="column[0]"
+                v-for="[key, value] in Object.entries(props.chart.data.columns)"
+                :label="value.displayName || key"
+                :key
             >
                 <template #default="scope">
-                    {{
-                        column[1].field === "DURATION" ? Utils.humanDuration(scope.row[column[0]]) : scope.row[column[0]]
-                    }}
+                    <template v-if="value.field === 'ID'">
+                        <RouterLink
+                            v-if="linkData(scope.row)"
+                            :to="{
+                                name: 'executions/update',
+                                params: {
+                                    namespace: linkData(scope.row)?.NAMESPACE,
+                                    flowId: linkData(scope.row)?.FLOW_ID,
+                                    id: scope.row[key],
+                                },
+                            }"
+                        >
+                            <code>{{ scope.row[key].slice(0, 8) }}</code>
+                        </RouterLink>
+                        <code v-else>{{ scope.row[key] }}</code>
+                    </template>
+                    <template v-else-if="value.field === 'FLOW_ID'">
+                        <RouterLink
+                            v-if="linkData(scope.row)"
+                            :to="{
+                                name: 'flows/update',
+                                params: {
+                                    namespace: linkData(scope.row)?.NAMESPACE,
+                                    id: linkData(scope.row)?.FLOW_ID,
+                                },
+                            }"
+                        >
+                            <code>{{ scope.row[key] }}</code>
+                        </RouterLink>
+                        <code v-else>{{ scope.row[key] }}</code>
+                    </template>
+                    <template v-else-if="value.field === 'NAMESPACE'">
+                        <RouterLink
+                            :to="{
+                                name: 'namespaces/update',
+                                params: {
+                                    id: scope.row[key],
+                                },
+                            }"
+                        >
+                            <code>{{ scope.row[key] }}</code>
+                        </RouterLink>
+                    </template>
+                    <Status
+                        v-else-if="value.field === 'STATE'"
+                        size="small"
+                        :status="scope.row[key]"
+                    />
+                    <span v-else-if="value.field === 'DURATION'">{{
+                        Utils.humanDuration(scope.row[key])
+                    }}</span>
+                    <span v-else-if="value.field.toLowerCase().includes('date')">
+                        {{ moment(scope.row[key])?.format(dateFormat) ?? scope.row[key] }}
+                    </span>
+                    <span v-else>{{ scope.row[key] }}</span>
                 </template>
             </el-table-column>
         </el-table>
-        <el-pagination
+        <Pagination
             v-if="props.chart.chartOptions?.pagination?.enabled"
-            :current-page="currentPage"
-            :page-size="pageSize"
             :total="data.total"
-            @current-change="handlePageChange"
-            @size-change="handlePageSizeChange"
-            layout="prev, pager, next, sizes"
-            :page-sizes="[5, 10, 20, 50]"
-            :pager-count="5"
-            class="mt-3"
+            :size="pageSize"
+            :page="currentPage"
+            @page-changed="handlePageChange"
         />
     </template>
 
@@ -31,18 +83,23 @@
 </template>
 
 <script lang="ts" setup>
-    import {computed, onMounted, ref, watch} from "vue";
+    import {onMounted, ref, watch} from "vue";
+    import moment from "moment";
 
     import {useI18n} from "vue-i18n";
+    import Status from "../../../../Status.vue";
     import NoData from "../../../../layout/NoData.vue";
+    import Pagination from "../../../../layout/Pagination.vue";
 
     import {useStore} from "vuex";
-    import moment from "moment";
 
     import {useRoute} from "vue-router";
     import {Utils} from "@kestra-io/ui-libs";
+    import {decodeSearchParams} from "../../../../filter/utils/helpers.ts";
 
     const {t} = useI18n({useScope: "global"});
+
+    const dateFormat = localStorage.getItem("dateFormat") ?? "llll"
 
     const store = useStore();
 
@@ -50,71 +107,79 @@
 
     defineOptions({inheritAttrs: false});
     const props = defineProps({
-        identifier: {type: Number, required: true},
         chart: {type: Object, required: true},
-        isPreview: {type: Boolean, required: false, default: false}
+        showDefault: {type: Boolean, default: false},
+        defaultFilters: {type: Array, default: () => []},
     });
 
     const containerID = `${props.chart.id}__${Math.random()}`;
 
-    const dashboard = computed(() => store.state.dashboard.dashboard);
+    const linkData = (row: Record<string, any>) => {
+        const fields: Record<string, { field: string; displayName: string }> = props.chart.data.columns;
 
-    const currentPage = ref(1);
-    const pageSize = ref(5);
+        function getField(args: Record<string, any>) {
+            const result: Partial<Record<"FLOW_ID" | "NAMESPACE", any>> = {};
 
-    const handlePageChange = (page) => {
-        currentPage.value = page;
-        generate();
+            for (const key in args) {
+                const config = fields[key];
+                if (config && (config.field === "FLOW_ID" || config.field === "NAMESPACE")) {
+                    result[config.field] = args[key];
+                }
+            }
+
+            return result.FLOW_ID && result.NAMESPACE ? result : undefined;
+        }
+
+        return getField(row);
     };
 
-    const handlePageSizeChange = (size) => {
-        currentPage.value = 1;
-        pageSize.value = size;
-        generate();
+    const currentPage = ref(1);
+    const pageSize = ref(10);
+
+    const handlePageChange = (options) => {
+        currentPage.value = options.page;
+        pageSize.value = options.size;
+        generate(route.params.id);
     };
 
     const data = ref();
-    const generate = async () => {
-        if (!props.isPreview) {
-            const params = {
-                id: dashboard.value.id,
+    const generate = async (id) => {
+        let decodedParams = decodeSearchParams(route.query, undefined, []);
+        if (!props.showDefault) {
+            let params = {
+                id,
                 chartId: props.chart.id,
-                startDate: route.query.timeRange
-                    ? moment()
-                        .subtract(
-                            moment.duration(route.query.timeRange).as("milliseconds"),
-                        )
-                        .toISOString(true)
-                    : route.query.startDate ||
-                        moment()
-                            .subtract(moment.duration("PT720H").as("milliseconds"))
-                            .toISOString(true),
-                endDate: route.query.timeRange
-                    ? moment().toISOString(true)
-                    : route.query.endDate || moment().toISOString(true),
+                filters: props.defaultFilters.concat(decodedParams?? [])
             };
-            if (route.query.namespace) {
-                params.namespace = route.query.namespace;
+            if (props.chart.chartOptions?.pagination?.enabled) {
+                params.pageNumber = currentPage.value;
+                params.pageSize = pageSize.value;
             }
-            if (route.query.labels) {
-                params.labels = Object.fromEntries(route.query.labels.map(l => l.split(":")));
+            if (decodedParams) {
+                params = {...params, filters: decodedParams};
             }
+            data.value = await store.dispatch("dashboard/generate", params);
+        } else {
+            const params = {filters: {...decodedParams}};
 
             if (props.chart.chartOptions?.pagination?.enabled) {
                 params.pageNumber = currentPage.value;
                 params.pageSize = pageSize.value;
             }
 
-            data.value = await store.dispatch("dashboard/generate", params);
-        } else {
-            data.value = await store.dispatch("dashboard/chartPreview", props.chart.content)
+            data.value = await store.dispatch("dashboard/chartPreview", {
+                chart: props.chart.content,
+                globalFilter: {...params, filters: props.defaultFilters.concat(decodedParams?? [])},
+            });
         }
     };
 
-    watch(route, async () => await generate());
-    watch(
-        () => props.identifier,
-        () => generate(),
-    );
-    onMounted(() => generate());
+    watch(route, async (route) => await generate(route.params?.id));
+    onMounted(() => generate(route.params.id));
 </script>
+
+<style lang="scss" scoped>
+code {
+    color: var(--ks-content-id);
+}
+</style>

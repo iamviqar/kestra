@@ -2,8 +2,8 @@
     <nav data-component="FILENAME_PLACEHOLDER" class="d-flex w-100 gap-3 top-bar">
         <div class="d-flex flex-column flex-grow-1 flex-shrink-1 overflow-hidden top-title">
             <el-breadcrumb v-if="breadcrumb">
-                <el-breadcrumb-item v-for="(item, x) in breadcrumb" :key="x">
-                    <router-link :to="item.link">
+                <el-breadcrumb-item v-for="(item, x) in breadcrumb" :key="x" :class="{'pe-none': item.disabled}">
+                    <router-link :to="!item.disabled ? item.link : {}">
                         {{ item.label }}
                     </router-link>
                 </el-breadcrumb-item>
@@ -11,6 +11,10 @@
             <h1 class="h5 fw-semibold m-0 d-inline-flex">
                 <slot name="title">
                     {{ title }}
+                    <el-tooltip v-if="description" :content="description">
+                        <Information class="ms-2" />
+                    </el-tooltip>
+                    <Badge v-if="beta" label="Beta" />
                 </slot>
                 <el-button
                     class="star-button"
@@ -34,7 +38,6 @@
             <slot name="additional-right" />
             <div class="d-flex fixed-buttons icons">
                 <impersonating />
-                <auth />
             </div>
         </div>
     </nav>
@@ -42,29 +45,38 @@
 
 <script>
     import {mapState, mapGetters} from "vuex";
-    import Auth from "override/components/auth/Auth.vue";
     import Impersonating from "override/components/auth/Impersonating.vue";
     import GlobalSearch from "./GlobalSearch.vue";
     import TrashCan from "vue-material-design-icons/TrashCan.vue";
     import StarOutlineIcon from "vue-material-design-icons/StarOutline.vue";
     import StarIcon from "vue-material-design-icons/Star.vue";
-
+    import Information from "vue-material-design-icons/Information.vue"
+    import Badge from "../global/Badge.vue";
 
     export default {
         components: {
-            Auth,
             GlobalSearch,
             TrashCan,
-            Impersonating
+            Impersonating,
+            Information,
+            Badge
         },
         props: {
             title: {
                 type: String,
                 required: true
             },
+            description: {
+                type: String,
+                default: undefined
+            },
             breadcrumb: {
                 type: Array,
                 default: undefined
+            },
+            beta: {
+                type: Boolean,
+                required: false
             },
         },
         computed: {
@@ -186,7 +198,7 @@
                 }
             }
 
-            :slotted(ul) {
+            :slotted(ul), :deep(ul) {
                 display: flex;
                 list-style: none;
                 padding: 0;

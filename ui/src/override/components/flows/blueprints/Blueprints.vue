@@ -7,13 +7,14 @@
         :image="headerImage"
         :image-dark="headerImageDark"
     >
-        <section class="main-container" v-bind="$attrs">
+        <section :class="{'main-container': true, 'blueprints-margin': !combinedView}" v-bind="$attrs">
             <blueprint-detail
                 v-if="selectedBlueprintId"
                 :embed="embed"
                 :blueprint-id="selectedBlueprintId"
                 blueprint-type="community"
                 @back="selectedBlueprintId = undefined"
+                :combined-view
             />
             <blueprints-browser
                 @loaded="$emit('loaded', $event)"
@@ -35,7 +36,7 @@
                     />
                 </template>
                 <template v-if="embeddedTab === 'custom'" #content>
-                    <DemoBlueprints />
+                    <DemoBlueprints :embed />
                 </template>
             </blueprints-browser>
         </section>
@@ -75,7 +76,11 @@
             tab: {
                 type: String,
                 default: "community"
-            }
+            },
+            combinedView: {
+                type: Boolean,
+                default: false
+            },
         },
         data() {
             return {
@@ -135,6 +140,9 @@
     .main-container {
         padding-top: 6px !important;
         padding-bottom: 4rem;
+    }
+
+    .blueprints-margin {
         margin: 0 32px;
     }
 </style>

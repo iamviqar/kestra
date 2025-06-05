@@ -22,6 +22,10 @@ public interface SchedulerTriggerStateInterface {
 
     Trigger create(Trigger trigger) throws ConstraintViolationException;
 
+    Trigger save(Trigger trigger, ScheduleContextInterface scheduleContext, String headerContent) throws ConstraintViolationException;
+
+    Trigger create(Trigger trigger, String headerContent) throws ConstraintViolationException;
+
     Trigger update(Trigger trigger);
 
     Trigger update(Flow flow, AbstractTrigger abstractTrigger, ConditionContext conditionContext) throws Exception;
@@ -34,6 +38,11 @@ public interface SchedulerTriggerStateInterface {
      * Used by the JDBC implementation: find triggers in all tenants.
      */
     List<Trigger> findByNextExecutionDateReadyForAllTenants(ZonedDateTime now, ScheduleContextInterface scheduleContext);
+
+    /**
+     * Used by the JDBC implementation: find ready but locked triggers
+     */
+    List<Trigger> findByNextExecutionDateReadyButLockedTriggers(ZonedDateTime now);
 
     /**
      * Used by the Kafka implementation: find triggers in the scheduler assigned flow (as in Kafka partition assignment).

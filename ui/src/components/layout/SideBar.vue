@@ -248,6 +248,9 @@
         .vsm--child {
             .vsm--item {
                 padding: 0;
+                .vsm--title {
+                    padding-left: 10px;
+                }
             }
         }
 
@@ -288,8 +291,12 @@
         }
 
         .vsm--link_open{
-            position:relative !important;
+            position: relative !important;
             z-index: 3;
+        }
+
+        &.vsm_collapsed .vsm--link_open{
+            position: static !important;
         }
 
         .vsm--child .vsm--link{
@@ -350,6 +357,11 @@
             .vsm--title {
                 top: 3px;
             }
+        }
+
+        .vsm--scroll-thumb {
+            background: var(--ks-border-primary) !important;
+            border-radius: 8px;
         }
 
         .vsm--mobile-bg {

@@ -1,15 +1,17 @@
 <template>
-    <el-row v-for="(item, index) in currentValue" :key="index" :gutter="10">
+    <el-row v-for="(item, index) in currentValue" :key="index" :gutter="10" class="w-100">
         <el-col :span="6">
             <InputText
                 :model-value="item[0]"
                 @update:model-value="onKey(index, $event)"
                 @change="onKeyChange(index, $event)"
+                margin="m-0"
             />
         </el-col>
         <el-col :span="16">
             <component
-                :is="`task-${schema.additionalProperties ? getType(schema.additionalProperties) : 'expression'}`"
+
+                :is="schema.additionalProperties ? getTaskComponent(schema.additionalProperties, key, properties) : TaskExpression"
                 :model-value="item[1]"
                 @update:model-value="onValueChange(index, $event)"
                 :root="getKey(item[0])"
@@ -29,12 +31,14 @@
     import {DeleteOutline} from "../../code/utils/icons";
 
     import InputText from "../../code/components/inputs/InputText.vue";
+    import TaskExpression from "./TaskExpression.vue";
     import Add from "../../code/components/Add.vue";
 </script>
 
 <script>
     import {toRaw} from "vue";
     import Task from "./Task";
+    import getTaskComponent from "./getTaskComponent";
 
     function emptyValueObjectProvider() {
         return {"": undefined};
@@ -48,7 +52,10 @@
         mixins: [Task],
         emits: ["update:modelValue"],
         props: {
-            class: {type: String, default: undefined},
+            class: {
+                type: String,
+                default: undefined
+            },
         },
         data() {
             return {
@@ -71,7 +78,7 @@
             },
         },
         watch: {
-            modelValue(_newValue, _oldValue) {
+            modelValue() {
                 this.currentValue = Object.entries(toRaw(this.values));
             },
         },

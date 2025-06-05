@@ -5,19 +5,34 @@
         :gutter="10"
         class="w-100"
     >
-        <el-col :span="2" class="d-flex flex-column mt-1 mb-2 reorder">
-            <ChevronUp @click.prevent.stop="moveItem(index, 'up')" />
-            <ChevronDown @click.prevent.stop="moveItem(index, 'down')" />
-        </el-col>
-        <el-col :span="20">
-            <InputText
-                :model-value="element"
-                @update:model-value="(v) => handleInput(v, index)"
-                :placeholder="$t('value')"
-                class="w-100"
+        <el-col :span="2" class="d-flex flex-column justify-content-center mt-1 mb-2 reorder" v-if="items.length > 1">
+            <ChevronUp
+                @click.prevent.stop="moveItem(index, 'up')"
+                :class="{disabled: index === 0}"
+            />
+            <ChevronDown
+                @click.prevent.stop="moveItem(index, 'down')"
+                :class="{disabled: index === items.length - 1}"
             />
         </el-col>
-        <el-col :span="2" class="col align-self-center delete">
+        <el-col :span="items.length > 1 ? 20 : 22" class="pe-2">
+            <TaskWrapper :merge="!needWrapper">
+                <template #tasks>
+                    <component
+                        :key="'array-' + index"
+                        :is="componentType"
+                        :model-value="element"
+                        :task="modelValue"
+                        root="array"
+                        :properties="{}"
+                        :schema="props.schema.items"
+                        :definitions="props.definitions"
+                        @update:model-value="handleInput($event, index)"
+                    />
+                </template>
+            </TaskWrapper>
+        </el-col>
+        <el-col :span="2" class="d-flex align-items-center justify-content-center delete">
             <DeleteOutline @click="removeItem(index)" />
         </el-col>
     </el-row>
@@ -25,17 +40,37 @@
 </template>
 
 <script setup lang="ts">
-    import {ref} from "vue";
+    import {computed, ref} from "vue";
 
     import {DeleteOutline, ChevronUp, ChevronDown} from "../../code/utils/icons";
 
-    import InputText from "../../code/components/inputs/InputText.vue";
     import Add from "../../code/components/Add.vue";
+    import getTaskComponent from "./getTaskComponent";
+    import TaskWrapper from "./TaskWrapper.vue";
 
     defineOptions({inheritAttrs: false});
 
     const emits = defineEmits(["update:modelValue"]);
-    const props = defineProps({modelValue: {type: Array, default: undefined}});
+    const props = withDefaults(defineProps<{
+        schema: any;
+        definitions: any;
+        modelValue?: (string | number | boolean | undefined)[] | string | number | boolean;
+    }>(), {
+        modelValue: undefined,
+        schema: () => ({}),
+        definitions: () => ({}),
+    });
+
+    const componentType = computed(() => {
+        return getTaskComponent(props.schema.items, "", props.definitions);
+    });
+
+    const needWrapper = computed(() => {
+        return componentType.value.ksTaskName !== "string" &&
+            componentType.value.ksTaskName !== "number" &&
+            componentType.value.ksTaskName !== "boolean" &&
+            componentType.value.ksTaskName !== "expression";
+    });
 
     const items = ref(
         !Array.isArray(props.modelValue) ? [props.modelValue] : props.modelValue,
@@ -54,6 +89,7 @@
         items.value.splice(index, 1);
         emits("update:modelValue", items.value);
     };
+
     const moveItem = (index: number, direction: "up" | "down") => {
         if (direction === "up" && index > 0) {
             [items.value[index - 1], items.value[index]] = [
@@ -72,4 +108,10 @@
 
 <style scoped lang="scss">
 @import "../../code/styles/code.scss";
+
+.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    cursor: not-allowed;
+}
 </style>

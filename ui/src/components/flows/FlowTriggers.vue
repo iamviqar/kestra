@@ -1,10 +1,13 @@
 <template>
     <KestraFilter
+        v-if="triggersWithType.length"
         prefix="flow_triggers"
+        read-only
         :buttons="{
             refresh: {shown: true, callback: loadData},
             settings: {shown: false}
         }"
+        legacy-query
     />
 
     <el-table
@@ -16,7 +19,7 @@
     >
         <el-table-column type="expand">
             <template #default="props">
-                <LogsWrapper class="m-3" :filters="{...props.row, triggerId: props.row.id}" purge-filters :charts="false" embed />
+                <LogsWrapper class="m-3" :filters="{...props.row, triggerId: props.row.id}" purge-filters :with-charts="false" embed />
             </template>
         </el-table-column>
         <el-table-column prop="id" :label="$t('id')">
@@ -147,12 +150,31 @@
         </el-table-column>
     </el-table>
 
-    <empty-state
+    <div v-if="triggersWithType.length" class="mt-4">
+        <el-button
+            @click="addNewTrigger"
+            :icon="Plus"
+            class="border-0 p-3"
+        >
+            {{ $t('no_code.creation.triggers') }}
+        </el-button>
+    </div>
+
+    <Empty
         v-else
-        :title="$t('triggers-view.title_no_triggers')"
-        :description="$t('triggers-view.desc_no_triggers')"
-        :image="TriggersEmptyImage"
-    />
+        type="triggers"
+    >
+        <template #button>
+            <el-button
+                type="primary"
+                @click="addNewTrigger"
+                :icon="Plus"
+                class="mt-3"
+            >
+                {{ $t('no_code.creation.triggers') }}
+            </el-button>
+        </template>
+    </Empty>
 
     <el-dialog v-model="isBackfillOpen" destroy-on-close :append-to-body="true">
         <template #header>
@@ -185,6 +207,7 @@
         <flow-run
             @update-inputs="backfill.inputs = $event"
             @update-labels="backfill.labels = $event"
+            :selected-trigger="selectedTrigger"
             :redirect="false"
             :embed="true"
         />
@@ -236,11 +259,13 @@
     import Check from "vue-material-design-icons/Check.vue";
     import Restart from "vue-material-design-icons/Restart.vue";
     import CalendarCollapseHorizontalOutline from "vue-material-design-icons/CalendarCollapseHorizontalOutline.vue"
+    import Plus from "vue-material-design-icons/Plus.vue";
     import FlowRun from "./FlowRun.vue";
     import Id from "../Id.vue";
     import TriggerAvatar from "./TriggerAvatar.vue";
 
     import KestraFilter from "../filter/KestraFilter.vue";
+    import Empty from "../layout/empty/Empty.vue";
 </script>
 
 <script>
@@ -254,12 +279,17 @@
     import action from "../../models/action";
     import moment from "moment";
     import LogsWrapper from "../logs/LogsWrapper.vue";
-    import EmptyState from "../layout/EmptyState.vue";
-    import TriggersEmptyImage from "../../assets/triggers_empty.svg";
     import _isEqual from "lodash/isEqual";
+    import {storageKeys} from "../../utils/constants.js";
 
     export default {
-        components: {Markdown, Kicon, DateAgo, Vars, Drawer, LogsWrapper, EmptyState},
+        components: {Markdown, Kicon, DateAgo, Vars, Drawer, LogsWrapper},
+        props:{
+            embed: {
+                type: Boolean,
+                default: false
+            }
+        },
         data() {
             return {
                 triggerId: undefined,
@@ -353,6 +383,9 @@
                     }
                 }
                 return false
+            },
+            editorViewType() {
+                return localStorage.getItem(storageKeys.EDITOR_VIEW_TYPE) === "NO_CODE";
             },
         },
         methods: {
@@ -486,6 +519,41 @@
             canBeDisabled(trigger) {
                 return this.triggers.map(trigg => trigg.triggerId).includes(trigger.id)
                     && !trigger.sourceDisabled;
+            },
+            addNewTrigger() {
+                localStorage.setItem(storageKeys.EDITOR_VIEW_TYPE, "NO_CODE");
+
+                const baseUrl = {
+                    name: "flows/update",
+                    params: {
+                        tenant: this.$route.params.tenant,
+                        namespace: this.flow.namespace,
+                        id: this.flow.id,
+                        tab: "edit"
+                    }
+                };
+
+                if (this.editorViewType) {
+                    const route = {
+                        ...baseUrl,
+                        query: {
+                            section: "triggers"
+                        }
+                    };
+
+                    this.$nextTick(() => {
+                        this.$router.push(route).then(() => {
+                            this.$router.replace({
+                                ...route,
+                                query: {
+                                    ...route.query,
+                                }
+                            });
+                        });
+                    });
+                } else {
+                    this.$router.push(baseUrl);
+                }
             }
         }
     };

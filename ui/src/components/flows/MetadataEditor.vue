@@ -123,19 +123,6 @@
         </el-form-item>
         <el-form-item>
             <template #label>
-                <code>{{ $t("plugin defaults") }}</code>
-            </template>
-            <editor
-                :model-value="newMetadata.pluginDefaults"
-                :navbar="false"
-                :full-height="false"
-                :input="true"
-                lang="yaml"
-                @update:model-value="(value) => newMetadata.pluginDefaults = value"
-            />
-        </el-form-item>
-        <el-form-item>
-            <template #label>
                 <code>{{ $t("disabled") }}</code>
             </template>
             <div>
@@ -145,6 +132,8 @@
     </el-form>
 </template>
 <script setup>
+    import {YamlUtils as YAML_UTILS} from "@kestra-io/ui-libs";
+
     import TaskBasic from "./tasks/TaskBasic.vue";
 
     import Pencil from "vue-material-design-icons/Pencil.vue";
@@ -157,7 +146,6 @@
     import markdown from "../layout/Markdown.vue";
     import MetadataInputs from "./MetadataInputs.vue";
     import MetadataVariables from "./MetadataVariables.vue";
-    import yamlUtils from "../../utils/yamlUtils";
     import Editor from "../inputs/Editor.vue";
     import {mapState} from "vuex";
 
@@ -203,7 +191,6 @@
                     inputs: [],
                     variables: [["", undefined]],
                     concurrency: {},
-                    pluginDefaults: "",
                     outputs: "",
                     disabled: false
                 },
@@ -230,10 +217,9 @@
                 this.newMetadata.inputs = this.metadata.inputs || []
                 this.newMetadata.variables = this.metadata.variables ? Object.entries(toRaw(this.metadata.variables)) : [["", undefined]]
                 this.newMetadata.concurrency = this.metadata.concurrency || {}
-                this.newMetadata.pluginDefaults = yamlUtils.stringify(this.metadata.pluginDefaults) || ""
-                this.newMetadata.outputs = yamlUtils.stringify(this.metadata.outputs) || ""
+                this.newMetadata.outputs = YAML_UTILS.stringify(this.metadata.outputs) || ""
                 this.newMetadata.disabled = this.metadata.disabled || false
-                this.newMetadata.retry = yamlUtils.stringify(this.metadata.retry) || ""
+                this.newMetadata.retry = YAML_UTILS.stringify(this.metadata.retry) || ""
                 this.showConcurrency = !!this.metadata.concurrency
             },
             addItem() {
@@ -288,19 +274,17 @@
         computed: {
             ...mapState("plugin", ["inputSchema", "inputsType"]),
             cleanMetadata() {
-                const pluginDefaults = yamlUtils.parse(this.newMetadata.pluginDefaults);
-                const outputs = yamlUtils.parse(this.newMetadata.outputs);
-                const retry = yamlUtils.parse(this.newMetadata.retry);
+                const outputs = YAML_UTILS.parse(this.newMetadata.outputs);
+                const retry = YAML_UTILS.parse(this.newMetadata.retry);
                 const metadata = {
                     id: this.newMetadata.id,
                     namespace: this.newMetadata.namespace,
                     description: this.newMetadata.description,
-                    retry: retry,
+                    retry: retry && Object.keys(retry).length > 0 ? retry : undefined,
                     labels: this.arrayToObject(this.newMetadata.labels),
                     inputs: this.newMetadata.inputs.filter(e => e.id && e.type),
                     variables: this.arrayToObject(this.newMetadata.variables),
                     concurrency: this.cleanConcurrency(this.newMetadata.concurrency),
-                    pluginDefaults: pluginDefaults,
                     outputs: outputs,
                     disabled: this.newMetadata.disabled
                 }

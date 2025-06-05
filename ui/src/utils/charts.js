@@ -1,7 +1,7 @@
 import _merge from "lodash/merge";
 import Utils from "./utils";
 import {cssVariable, State} from "@kestra-io/ui-libs";
-import {getScheme} from "./scheme.js";
+import {getSchemeValue} from "./scheme";
 
 export function tooltip(tooltipModel) {
     const titleLines = tooltipModel.title || [];
@@ -32,8 +32,7 @@ export function tooltip(tooltipModel) {
 
 export function defaultConfig(override, theme) {
     const protectedTheme = theme ?? Utils.getTheme();
-    const color =
-        protectedTheme === "dark" ? "#FFFFFF" : cssVariable("--bs-gray-700");
+    const color = protectedTheme === "dark" ? "#FFFFFF" : cssVariable("--bs-gray-700");
 
     return _merge(
         {
@@ -50,11 +49,13 @@ export function defaultConfig(override, theme) {
                     display: false,
                     title: {color},
                     ticks: {color},
+                    border: {color: cssVariable("--ks-border-primary")},
                 },
                 y: {
                     display: false,
                     title: {color},
                     ticks: {color},
+                    border: {color: cssVariable("--ks-border-primary")},
                 },
                 yB: {
                     display: false,
@@ -91,8 +92,28 @@ export function defaultConfig(override, theme) {
     );
 }
 
-export function chartClick(moment, router, route, event) {
+export function chartClick(moment, router, route, event, parsedData, elements, type = "label") {
     const query = {};
+
+    if (elements && parsedData) {
+        if (elements.length > 0) {
+            const element = elements[0];
+            let state;
+            if (type === "label") {
+                // For Bar charts that use dataset labels for state
+                state = parsedData.datasets[element.datasetIndex].label;
+            } else if (type === "dataset") {
+                // For Pie/Doughnut charts that use labels array for state
+                state = parsedData.labels[element.index];
+            }
+            if (state) {
+                query.state = state;
+                query.scope = "USER";
+                query.size = 100;
+                query.page = 1;
+            }
+        }
+    }
 
     if (event.date) {
         const formattedDate = moment(
@@ -170,12 +191,12 @@ export function getConsistentHEXColor(theme, value) {
 
     let hex;
 
-    hex = getScheme(theme, value, "executions");
+    hex = getSchemeValue(value, "executions");
     if (hex) {
         return hex;
     }
 
-    hex = getScheme(theme, value, "logs");
+    hex = getSchemeValue(value, "logs");
     if (hex) {
         return hex;
     }

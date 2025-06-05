@@ -43,6 +43,7 @@
             <div ref="editorContainer" class="editor-wrapper position-relative">
                 <monaco-editor
                     ref="monacoEditor"
+                    :path="path"
                     :theme="themeComputed"
                     :value="modelValue"
                     :options="options"
@@ -50,11 +51,13 @@
                     :original="original"
                     @change="onInput"
                     @editor-did-mount="editorDidMount"
+                    @tab-loaded="(...args) => $emit('tabLoaded', ...args)"
                     :language="lang"
                     :extension="extension"
                     :schema-type="schemaType"
                     :input="input"
                     :creating="creating"
+                    :large-suggestions="largeSuggestions"
                 />
                 <div
                     v-show="showPlaceholder"
@@ -90,21 +93,26 @@
             modelValue: {type: String, default: ""},
             original: {type: String, default: undefined},
             lang: {type: String, default: undefined},
+            path: {type: String, default: undefined},
             extension: {type: String, default: undefined},
             schemaType: {type: String, default: undefined},
             navbar: {type: Boolean, default: true},
             input: {type: Boolean, default: false},
+            keepFocused: {type: Boolean, default: undefined},
+            largeSuggestions: {type: Boolean, required: false},
             fullHeight: {type: Boolean, default: true},
             customHeight: {type: Number, default: 7},
             theme: {type: String, default: undefined},
             placeholder: {type: [String, Number], default: ""},
             diffSideBySide: {type: Boolean, default: true},
             readOnly: {type: Boolean, default: false},
+            wordWrap: {type: Boolean, default: true},
             lineNumbers: {type: Boolean, default: undefined},
             minimap: {type: Boolean, default: false},
             creating: {type: Boolean, default: false},
             label: {type: String, default: undefined},
             shouldFocus: {type: Boolean, default: true},
+            showScroll: {type: Boolean, default: false},
         },
         components: {
             MonacoEditor,
@@ -113,10 +121,11 @@
             "save",
             "execute",
             "focusout",
-            "tab",
+            "tabLoaded",
             "update:modelValue",
             "cursor",
             "confirm",
+            "tabLoaded",
         ],
         editor: undefined,
         data() {
@@ -160,19 +169,15 @@
             showPlaceholder() {
                 return (
                     this.input === true &&
-                    !this.focus &&
-                    (!Object.hasOwn(this, "editor") ||
-                        this.editor === undefined ||
-                        !(
-                            this.editor.getValue() !== undefined &&
-                            this.editor.getValue() !== ""
-                        ))
+                    !this.shouldFocus &&
+                    (!this.modelValue || this.modelValue.trim() === "") &&
+                    !this.focus
                 );
             },
             options() {
                 const options = {};
 
-                if (this.input) {
+                if (this.input && !this.lineNumbers) {
                     options.lineNumbers = "off";
                     options.folding = false;
                     options.renderLineHighlight = "none";
@@ -189,12 +194,12 @@
                     options.scrollBeyondLastColumn = 0;
                     options.overviewRulerLanes = 0;
                     options.scrollbar = {
-                        vertical: "hidden",
+                        vertical: !this.showScroll ? "hidden" : "visible",
                         horizontal: "hidden",
                         alwaysConsumeMouseWheel: false,
                         handleMouseWheel: true,
                         horizontalScrollbarSize: 0,
-                        verticalScrollbarSize: 0,
+                        verticalScrollbarSize: !this.showScroll ? 0 : 5,
                         useShadows: false,
                     };
                     options.stickyScroll = {
@@ -227,7 +232,7 @@
                     options.readOnly = true;
                 }
 
-                options.wordWrap = true;
+                options.wordWrap = this.wordWrap;
                 options.automaticLayout = true;
 
                 return {
@@ -268,11 +273,11 @@
                         this.focus = false;
                     });
 
-                    if(this.shouldFocus){                
+                    if(this.shouldFocus){
                         this.editor.onDidFocusEditorText?.(() => {
                             this.focus = true;
                         });
-                        
+
                         this.$refs.monacoEditor.focus();
                     }
                 }
@@ -318,7 +323,7 @@
 
                 // TabFocus is global to all editor so revert the behavior on non inputs
                 this.editor.onDidFocusEditorText?.(() => {
-                    TabFocus.setTabFocusMode(this.input);
+                    TabFocus.setTabFocusMode(this.keepFocused === undefined ? this.input : false);
                 });
 
                 if (this.input) {
@@ -437,7 +442,7 @@
 
                 // attach an imperative method to the element so tests can programmatically update
                 // the value of the editor without dealing with how Monaco handles the exact keystrokes
-                this.$refs.monacoEditor.$el.__setValueInTests = (value) => {
+                this.$refs.monacoEditor.$el.querySelector(".ks-monaco-editor").__setValueInTests = (value) => {
                     this.editor.setValue(value);
                 };
             },
@@ -492,7 +497,7 @@
 @import "@kestra-io/ui-libs/src/scss/color-palette.scss";
 @import "../../styles/layout/root-dark.scss";
 
-:not(.namespace-form, .el-drawer__body) > .ks-editor {
+:not(.namespace-defaults, .el-drawer__body) > .ks-editor {
     flex-direction: column;
     height: 100%;
 }
@@ -522,6 +527,8 @@
         top: 8px;
         right: 20px;
         z-index: 10;
+        color: var(--ks-content-secondary);
+        cursor: pointer;
     }
 
     .editor-absolute-container > * {
@@ -548,7 +555,7 @@
             padding-top: 7px;
 
             &.custom-dark-vs-theme {
-                background-color: $input-bg;
+                background-color: var(--ks-background-input);           
             }
 
             &.theme-light {
@@ -611,14 +618,18 @@
     .monaco-editor,
     .monaco-editor-background {
         outline: none;
-        background-color: $input-bg;
-        --vscode-editor-background: $input-bg;
-        --vscode-breadcrumb-background: $input-bg;
-        --vscode-editorGutter-background: $input-bg;
+        background-color: var(--ks-background-input);
+        --vscode-editor-background: var(--ks-background-input);
+        --vscode-breadcrumb-background: var(--ks-background-input);
+        --vscode-editorGutter-background: var(--ks-background-input);
     }
 
     .monaco-editor .margin {
-        background-color: $input-bg;
+        background-color: var(--ks-background-input);
+        --vscode-editorGutter-background: var(--ks-background-input);
+        --vscode-editorLineNumber-activeForeground: var(--ks-content-secondary);
+        --vscode-editorLineNumber-foreground: var(--ks-content-secondary);
+        --vscode-editorLineNumber-rangeHighlightBackground: var(--ks-content-secondary);
     }
 }
 
@@ -641,7 +652,7 @@
 }
 
 .disable-text {
-    color: grey !important;
+    color: var(--ks-content-inactive) !important;
 }
 
 div.img {

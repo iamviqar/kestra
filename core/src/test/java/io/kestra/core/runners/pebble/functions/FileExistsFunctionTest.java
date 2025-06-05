@@ -3,6 +3,7 @@ package io.kestra.core.runners.pebble.functions;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.runners.VariableRenderer;
+import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.IdUtils;
 import jakarta.inject.Inject;
@@ -13,6 +14,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.Map;
 
+import static io.kestra.core.tenant.TenantService.MAIN_TENANT;
 import static org.junit.jupiter.api.Assertions.*;
 
 @KestraTest
@@ -32,7 +34,7 @@ class FileExistsFunctionTest {
     }
 
     private URI getInternalStorageFile(URI internalStorageURI, String text) throws IOException {
-        return storageInterface.put(null, NAMESPACE, internalStorageURI, new ByteArrayInputStream(text.getBytes()));
+        return storageInterface.put(MAIN_TENANT, NAMESPACE, internalStorageURI, new ByteArrayInputStream(text.getBytes()));
     }
 
     @Test
@@ -45,7 +47,8 @@ class FileExistsFunctionTest {
         Map<String, Object> variables = Map.of(
             "flow", Map.of(
                 "id", FLOW,
-                "namespace", NAMESPACE),
+                "namespace", NAMESPACE,
+                "tenantId", MAIN_TENANT),
             "execution", Map.of("id", executionId)
         );
         boolean render = Boolean.parseBoolean(variableRenderer.render("{{ fileExists('" + internalStorageFile + "') }}", variables));
@@ -53,7 +56,20 @@ class FileExistsFunctionTest {
     }
 
     @Test
-    void shouldReturnFalseForNonExistentFile() throws IOException, IllegalVariableEvaluationException {
+    void readNamespaceFileWithNamespace() throws IllegalVariableEvaluationException, IOException {
+        String namespace = "io.kestra.tests";
+        String filePath = "file.txt";
+        storageInterface.createDirectory(MAIN_TENANT, namespace, URI.create(StorageContext.namespaceFilePrefix(namespace)));
+        storageInterface.put(MAIN_TENANT, namespace, URI.create(StorageContext.namespaceFilePrefix(namespace) + "/" + filePath), new ByteArrayInputStream("NOT AN EMPTY FILE".getBytes()));
+
+        boolean render = Boolean.parseBoolean(
+            variableRenderer.render("{{ fileExists('" + filePath + "', namespace='" + namespace + "') }}",
+                Map.of("flow", Map.of("namespace", "flow.namespace", "tenantId", MAIN_TENANT))));
+        assertTrue(render);
+    }
+
+    @Test
+    void shouldReturnFalseForNonExistentFile() throws IllegalVariableEvaluationException {
         String executionId = IdUtils.create();
         URI internalStorageURI = getInternalStorageURI(executionId);
         URI internalStorageFile = URI.create("kestra://" + internalStorageURI.getRawPath()); // Don't create file just pass the URI.
@@ -62,7 +78,8 @@ class FileExistsFunctionTest {
         Map<String, Object> variables = Map.of(
             "flow", Map.of(
                 "id", FLOW,
-                "namespace", NAMESPACE),
+                "namespace", NAMESPACE,
+                "tenantId", MAIN_TENANT),
             "execution", Map.of("id", executionId)
         );
         boolean render = Boolean.parseBoolean(variableRenderer.render("{{ fileExists('" + internalStorageFile + "') }}", variables));

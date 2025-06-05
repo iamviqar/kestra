@@ -1,27 +1,12 @@
 <template>
     <KestraFilter
         prefix="flow_metrics"
-        :include="[
-            'task',
-            'metric',
-            'aggregation',
-            'relative_date',
-            'absolute_date',
-        ]"
-        :values="{
-            task: tasksWithMetrics.map((value) => ({
-                label: value,
-                value,
-            })),
-            metric: metrics.map((value) => ({
-                label: value,
-                value,
-            })),
-        }"
+        :language="FlowMetricFilterLanguage"
         :buttons="{
             refresh: {shown: true, callback: load},
             settings: {shown: false},
         }"
+        legacy-query
     />
 
     <div v-bind="$attrs" v-loading="isLoading">
@@ -56,7 +41,11 @@
     </div>
 </template>
 
-<script>
+<script setup lang="ts">
+    import FlowMetricFilterLanguage from "../../composables/monaco/languages/filters/impl/flowMetricFilterLanguage.js";
+</script>
+
+<script lang="ts">
     import {Bar} from "vue-chartjs";
     import {mapState, mapGetters} from "vuex";
     import moment from "moment";
@@ -70,8 +59,8 @@
             Bar,
             KestraFilter,
         },
-        async created() {
-            await this.loadMetrics();
+        created() {
+            this.loadMetrics();
         },
         computed: {
             ...mapState("flow", [
@@ -185,9 +174,7 @@
             },
             loadQuery(base) {
                 return {
-                    ...base,
-                    startDate: this.startDate,
-                    endDate: this.endDate,
+                    ...base
                 };
             },
             loadMetrics() {
@@ -234,6 +221,8 @@
                             metric: this.$route.query.metric,
                             aggregation: [this.$route.query.aggregation].flat().map(item => item.toLowerCase()),
                             taskId: this.$route.query.task,
+                            startDate: this.$route.query.startDate,
+                            endDate: this.$route.query.endDate
                         }),
                     );
                 } else {

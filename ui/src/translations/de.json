@@ -39,6 +39,7 @@
     "add flow": "Flow hinzufügen",
     "add task": "Einen Task hinzufügen",
     "add-trigger-in-editor": "Fügen Sie zuerst einen Trigger zu Ihrem Flow hinzu",
+    "add_new_item": "Neues Element hinzufügen",
     "administration": "Administration",
     "advanced configuration": "Andere Eigenschaften",
     "after": "nach",
@@ -56,13 +57,17 @@
     "back_to_dashboard": "Zurück zum Dashboard",
     "backfill": "Backfill",
     "backfill executions": "Backfill-Ausführungen",
+    "backfill paused": "Backfill PAUSED",
+    "backfill running": "Backfill läuft",
     "before": "vor",
     "behavior": "Verhalten",
     "blueprints": {
       "apps": "App-Blueprints",
       "community": "Gemeinschaft",
+      "create": "Erstellen Sie ein Blueprint",
       "custom": "Benutzerdefinierte Blueprints",
       "dashboards": "Dashboard Blueprints",
+      "edit": "Bearbeiten Sie ein Blueprint",
       "empty": "Keine Blueprints zum Anzeigen.",
       "flows": "Flow-Blueprints",
       "header": {
@@ -128,13 +133,10 @@
     "close sidebar": "Seitenleiste schließen",
     "collapse": "Einklappen",
     "collapse all": "Alle einklappen",
-    "concurrency": "Nebenläufigkeit",
-    "concurrency-view": {
-      "desc_no_executions": "Lesen Sie mehr über <strong><a href=\"https://kestra.io/docs/workflow-components/execution\" target=\"_blank\">Ausführungen</a></strong> in unserer Dokumentation.",
-      "desc_no_limit": "Lesen Sie mehr über <strong><a href=\"https://kestra.io/docs/workflow-components/concurrency\" target=\"_blank\">Nebenläufigkeitsgrenzen</a></strong> in unserer Dokumentation.",
-      "title_no_executions": "Keine laufenden Ausführungen für diesen Flow.",
-      "title_no_limit": "Es sind keine Grenzen für diesen Flow festgelegt."
+    "common": {
+      "back": "Zurück"
     },
+    "concurrency": "Nebenläufigkeit",
     "conditions": "Bedingungen",
     "configure basic auth": "Basis-Authentifizierung konfigurieren",
     "confirm": "Bestätigen",
@@ -150,9 +152,11 @@
     "continue backfill": "Backfill fortsetzen",
     "continue backfills": "Backfills fortsetzen",
     "copied": "Kopiert",
+    "copied_logs_to_clipboard": "Logs in die Zwischenablage kopiert.",
     "copy": "Kopieren",
     "copy logs": "Logs kopieren",
     "copy url": "URL kopieren",
+    "copy_to_clipboard": "In die Zwischenablage kopieren",
     "create": "Erstellen",
     "create first task": "Erstellen Sie Ihren ersten Task",
     "create_custom_dashboard": "Neues Dashboard erstellen",
@@ -248,7 +252,6 @@
     "delete backfill": "Backfill löschen",
     "delete backfills": "Backfills löschen",
     "delete confirm": "Sind Sie sicher, dass Sie <code>{name}</code> löschen möchten?",
-    "delete confirm multiple": "Sind Sie sicher, dass Sie <code>{name}</code> KV(s) löschen möchten?",
     "delete execution running": "<div class=\"alert alert-warning mt-2 mb-0\">Diese Ausführung läuft noch, das Löschen wird sie nicht stoppen.<br />Sie müssen die Ausführung beenden, um sie zu stoppen.</div>",
     "delete logs": "Logs löschen",
     "delete ok": "ist gelöscht",
@@ -290,6 +293,10 @@
           "message": "In der Kestra Enterprise Edition bieten Namespaces erweiterte Isolation und Governance von Secrets, Variablen und Plugin-Standardeinstellungen im großen Maßstab. Administratoren können benutzerdefinierte Secrets-Manager, isolierte Speicher-Backends, dedizierte Worker-Gruppen und fein abgestufte Berechtigungen auf Basis von Namespaces konfigurieren. Dies stellt sicher, dass Secrets, Variablen und Plugin-Konfigurationen über verschiedene Teams und Projekte hinweg sicher und einfach zu verwalten bleiben.",
           "title": "Verbessern Sie Ihr Namespace-Management"
         },
+        "history": {
+          "message": "In der Kestra Enterprise Edition können Sie die Versionshistorie Ihrer Namespaces verwalten.",
+          "title": "Verwalten Sie die Revisionshistorie an einem Ort"
+        },
         "plugin-defaults": {
           "message": "In der Kestra Enterprise Edition können Sie namespace-spezifische Plugin-Standardeinstellungen festlegen, wodurch der Bedarf an doppelter Einrichtung in jedem Flow reduziert wird. Diese zentrale Plugin-Verwaltung erzwingt konsistente Konfigurationen, ermöglicht die sichere Referenzierung von Geheimnissen oder Variablen und vereinfacht die Wartung Ihrer Workflows.",
           "title": "Konfiguration mit Plugin-Standards standardisieren"
@@ -303,9 +310,27 @@
           "title": "Verwalten Sie Ihre Variablen zentral"
         }
       },
+      "secrets": {
+        "add_env": {
+          "first": "Kodieren Sie den <strong><a href=\"https://kestra.io/docs/how-to-guides/secrets#using-secrets-in-kestra\" target=\"_blank\">geheimen Wert in Base64</a></strong>",
+          "intro": "Um ein neues Secret zu erstellen:",
+          "second": "Fügen Sie eine Umgebungsvariable mit dem Namen '<strong>SECRET_{'{MY_SECRET_KEY}'}</strong>' mit dem obigen Wert hinzu",
+          "third": "Starte deine Kestra-Instanz neu"
+        },
+        "detected_env": "Hier sind Umgebungsvariablen vom Typ \"secret\", die beim Start der Instanz identifiziert wurden:",
+        "empty_env": "Sie haben noch keine Secrets in Ihrer Umgebung.",
+        "message": "Die Enterprise Edition (EE) ermöglicht es Ihnen, Geheimnisse direkt in der UI hinzuzufügen, zu bearbeiten oder zu löschen – ohne Neustart der Instanz. Organisieren Sie Geheimnisse nach namespace mit detaillierten RBAC-Berechtigungen und erben Sie sie von übergeordneten zu untergeordneten namespaces. EE integriert sich mit Geheimnis-Managern wie HashiCorp Vault, AWS Secrets Manager, Azure Key Vault, Google Secret Manager und Elasticsearch. Richten Sie dedizierte Backends pro namespace, Mandant oder Instanz ein, um Geheimnisse zwischen Teams zu isolieren, oder aktivieren Sie schreibgeschützte Geheimnisse, die in externen Tresoren gespeichert sind. Geheimnisse bleiben sowohl im Ruhezustand als auch während der Übertragung verschlüsselt. Optionales Caching reduziert API-Aufrufe, und Prüfpfade protokollieren alle Zugriffe.",
+        "title": "Aktualisieren Sie Ihr Secrets Management"
+      },
       "tenants": {
         "message": "Die Kestra Enterprise Edition unterstützt Multi-Tenancy und bietet vollständig isolierte Umgebungen für verschiedene Teams oder Projekte, jeweils mit eigenen Ressourcen wie dedizierten Worker-Gruppen oder Secrets und internen Speicher-Backends.",
         "title": "Verwalten Sie Workflows in isolierten Tenants"
+      },
+      "tests": {
+        "header": "Unittests für Flows",
+        "label": "Tests",
+        "message": "Überprüfen Sie die Logik Ihrer flows isoliert, erkennen Sie frühzeitig Regressionen und bewahren Sie das Vertrauen in Ihre Automatisierungen, während sie sich ändern und wachsen.",
+        "title": "Sicherstellen der Zuverlässigkeit bei jeder Änderung"
       }
     },
     "dependencies": "Abhängigkeiten",
@@ -313,10 +338,6 @@
     "dependencies loaded": "Abhängigkeiten geladen",
     "dependencies missing acls": "Keine Berechtigungen für diesen Flow",
     "dependency task": "Task {taskId} ist eine Abhängigkeit eines anderen Tasks",
-    "dependency-view": {
-      "desc_no_deps": "Lesen Sie mehr über <a href=\"https://kestra.io/docs/ui/flows#dependencies\" target=\"_blank\">Flow-Abhängigkeiten</a> in unserer Dokumentation.",
-      "title_no_deps": "Keine Abhängigkeiten sind für diesen Flow festgelegt."
-    },
     "description": "Beschreibung",
     "details": "Details",
     "disable": "Deaktivieren",
@@ -351,6 +372,7 @@
       "comment_uncomment": "Kommentar/Kommentar entfernen",
       "decrease_fontsize": "Schriftgröße verkleinern",
       "duplicate_cursor": "Kursor duplizieren",
+      "execute_flow": "Flow ausführen",
       "fold_unfold": "Code ein-/ausklappen",
       "increase_fontsize": "Schriftgröße erhöhen",
       "label": "Tastenkombinationen",
@@ -366,6 +388,40 @@
     },
     "email": "E-Mail",
     "email length constraint": "E-Mail darf 256 Zeichen nicht überschreiten",
+    "empty": {
+      "announcements": {
+        "content": "Ankündigungen ermöglichen es Ihnen, Ihre Benutzer über Änderungen zu informieren oder sie über geplante Wartungsarbeiten zu benachrichtigen. Wählen Sie einfach den Ankündigungstyp, den Zeitraum, in dem sie angezeigt werden soll, und schreiben Sie die Ankündigungsnachricht.",
+        "title": "Sie haben noch keine Ankündigungen!"
+      },
+      "apps": {
+        "content": "Beginnen Sie mit dem Erstellen von Apps, um mit Kestra von der Außenwelt zu interagieren.",
+        "title": "Sie haben noch keine Apps!"
+      },
+      "concurrency_executions": {
+        "content": "Erfahren Sie mehr über <strong><a href=\"https://kestra.io/docs/workflow-components/execution\" target=\"_blank\">Ausführungen</a></strong> in unserer Dokumentation.",
+        "title": "Keine laufenden Ausführungen für diesen Flow."
+      },
+      "concurrency_limit": {
+        "content": "Erfahren Sie mehr über <strong><a href=\"https://kestra.io/docs/workflow-components/concurrency\" target=\"_blank\">Nebenläufigkeitsgrenzen</a></strong> in unserer Dokumentation.",
+        "title": "Für diesen Flow sind keine Grenzen festgelegt."
+      },
+      "dependencies": {
+        "content": "Lesen Sie mehr über <a href=\"https://kestra.io/docs/ui/flows#dependencies\" target=\"_blank\">Flow-Abhängigkeiten</a> in unserer Dokumentation.",
+        "title": "Für diesen Flow sind keine Abhängigkeiten festgelegt."
+      },
+      "plugins": {
+        "content": "Lesen Sie mehr über <strong><a href=\"https://kestra.io/docs/workflow-components/plugin-defaults\" target=\"_blank\">Nebenläufigkeitsgrenzen</a></strong> in unserer Dokumentation.",
+        "title": "Für diesen Namespace sind keine Plugin-Standardeinstellungen festgelegt."
+      },
+      "testSuites": {
+        "content": "Beginnen Sie mit der Erstellung von Testsuiten, um Ihre Flows zu testen.",
+        "title": "Sie haben noch keine Test-Suites!"
+      },
+      "triggers": {
+        "content": "Lesen Sie mehr über <strong><a href=\"https://kestra.io/docs/workflow-components/triggers\" target=\"_blank\">Triggers</a></strong> in unserer Dokumentation.",
+        "title": "Ihr flow hat keine Trigger."
+      }
+    },
     "empty search": "Suchergebnisse sind leer",
     "enable": "Aktivieren",
     "enable concurrency": "Nebenläufigkeit aktivieren",
@@ -405,8 +461,6 @@
     "execute the flow": "Den Flow <code>{id}</code> ausführen",
     "execution": "Ausführung",
     "execution already finished": "Ausführung <code>{executionId}</code> bereits abgeschlossen",
-    "execution failed header": "Ausführung fehlgeschlagen!",
-    "execution failed message": "Mit letztem Fehler: <code>{message}</code>",
     "execution labels": "Ausführungs-Labels",
     "execution not found": "Ausführung <code>{executionId}</code> nicht gefunden",
     "execution not in state FAILED": "Ausführung <code>{executionId}</code> nicht im Zustand FAILED",
@@ -423,6 +477,7 @@
       "metrics": "Metriken löschen",
       "storage": "Interne Speicherdateien löschen"
     },
+    "execution_failed": "Ausführung fehlgeschlagen! Der letzte Fehler war",
     "execution_guide": {
       "get_started": {
         "text": "Befolgen Sie den Quickstart-Guide, um Kestra zu installieren und mit dem Erstellen Ihrer ersten Workflows zu beginnen.",
@@ -437,6 +492,8 @@
         "title": "Workflow-Komponenten"
       }
     },
+    "execution_starts_progress": "Sobald die Ausführung beginnt, sehen Sie hier Fortschrittsaktualisierungen.",
+    "execution_status": "Die Ausführung ist:",
     "executions": "Ausführungen",
     "executions deleted": "<code>{executionCount}</code> Ausführung(en) gelöscht",
     "executions duration (in minutes)": "Gesamte Ausführungsdauer (in Minuten)",
@@ -457,7 +514,6 @@
     "export": "Exportieren",
     "export all flows": "Alle Flows exportieren",
     "export all templates": "Alle Vorlagen exportieren",
-    "export_to_file": "In Datei exportieren",
     "exports": "Exporte",
     "failed to render pdf": "PDF-Vorschau konnte nicht gerendert werden",
     "false": "Falsch",
@@ -473,11 +529,13 @@
         "contains": "enthält",
         "ends_with": "endet mit",
         "greater_than": "größer als",
+        "greater_than_or_equal_to": "größer als oder gleich",
         "in": "im",
         "is": "ist",
         "is_not": "ist nicht",
         "is_one_of": "ist eine von",
         "less_than": "weniger als",
+        "less_than_or_equal_to": "kleiner oder gleich",
         "not_contains": "nicht enthält",
         "not_in": "nicht in",
         "starts_with": "beginnt mit"
@@ -491,6 +549,7 @@
         "aggregation": "Aggregation",
         "child": "Kind",
         "details": "Details",
+        "endDate": "Enddatum",
         "flow": "Flow",
         "labels": "Labels",
         "level": "Log-Ebene",
@@ -500,6 +559,7 @@
         "relative_date": "Relatives Datum",
         "scope": "Umfang",
         "service_type": "Typ",
+        "startDate": "Startdatum",
         "state": "Zustand",
         "status": "Status",
         "task": "Aufgabe",
@@ -517,6 +577,7 @@
         },
         "empty": "Sie haben noch keine Suche gespeichert.",
         "label": "Gespeicherte Suchen",
+        "remove": "Entfernen",
         "tooltip": "Sie können keine leeren Suchkriterien speichern."
       },
       "settings": {
@@ -535,8 +596,10 @@
     "flow export": "Sind Sie sicher, dass Sie <code>{flowCount}</code> Flow(s) exportieren möchten?",
     "flow must have id and namespace": "Flow muss eine Id und einen Namespace haben.",
     "flow not imported": "Einige Flows konnten nicht importiert werden",
+    "flow source not found": "Flow-Quelle nicht gefunden",
     "flow-dependencies": "Abhängigkeiten",
     "flow-no-dependencies": "Ihr Flow hat keine Abhängigkeiten.",
+    "flow_export": "Flow exportieren",
     "flow_only": "Nur auf der Flow-Registerkarte verfügbar.",
     "flows": "Flows",
     "flows deleted": "<code>{count}</code> Flow(s) gelöscht",
@@ -603,7 +666,9 @@
     "item": "Element",
     "items": "Elemente",
     "join community": "Community beitreten",
+    "join_slack": "Slack beitreten",
     "jump to...": "Springe zu...",
+    "kestra": "Kestra",
     "key": "Key",
     "kill": "Beenden",
     "kill only parents": "Nur Eltern beenden",
@@ -612,6 +677,10 @@
     "killed done": "Ausführung ist zum Beenden eingereiht",
     "kv": {
       "add": "Neuer Key-Value",
+      "delete multiple": {
+        "confirm": "Möchten Sie wirklich <code>{name}</code> KV(s) löschen?",
+        "warning": "Du hast keine Berechtigungen für diese namespaces, daher werden sie ausgelassen: <code>{namespaces}</code>"
+      },
       "duplicate": "Dieser Key existiert bereits",
       "name": "KV Store",
       "type": "Typ",
@@ -650,6 +719,11 @@
     "minutes": "Minuten",
     "monogram": "Monogramm",
     "months": "Monate",
+    "multi_panel_editor": {
+      "close_all_tabs": "Alle Registerkarten schließen",
+      "move_left": "Nach links verschieben",
+      "move_right": "Nach rechts verschieben"
+    },
     "multiple saved done": "{name} wurde(n) gespeichert",
     "name": "Name",
     "namespace": "Namespace",
@@ -679,6 +753,7 @@
         "parent_folder": "Übergeordneter Ordner:"
       },
       "export": "Namespace-Dateien exportieren",
+      "export_single": "Datei exportieren",
       "filter": "Filter",
       "import": {
         "error": "Fehler beim Importieren der Datei(en)",
@@ -722,7 +797,6 @@
       },
       "empty": {
         "create_message": "Sie können namespace-Dateien erstellen oder importieren.",
-        "message": "Sie können Namespace-Dateien aus der Seitenleiste erstellen oder importieren und sich das Einführungsvideo für unseren Editor ansehen.",
         "title": "Derzeit keine Registerkarten geöffnet",
         "video_message": "Sie können sich das Einführungsvideo für unseren Editor ansehen."
       }
@@ -746,10 +820,23 @@
     "no_code": {
       "adding": "+ {what} hinzufügen",
       "adding_default": "+ Neuen Wert hinzufügen",
+      "clearSelection": "Auswahl aufheben",
+      "close": {
+        "afterExecution": "Nach Ausführung Task schließen",
+        "conditions": "Bedingung schließen",
+        "errors": "Fehlerbehandler schließen",
+        "finally": "Task schließen",
+        "input": "Eingabe schließen",
+        "pluginDefaults": "Plugin-Standard schließen",
+        "tasks": "Task schließen",
+        "triggers": "Trigger schließen"
+      },
       "creation": {
-        "error handlers": "Fügen Sie einen Fehlerhandler hinzu",
+        "afterExecution": "Fügen Sie einen Block nach der Ausführung hinzu",
+        "conditions": "Bedingung hinzufügen",
+        "errors": "Einen Fehler-Handler hinzufügen",
         "finally": "Fügen Sie einen Finally-Block hinzu",
-        "select": "Wählen Sie einen {section} aus",
+        "pluginDefaults": "Fügen Sie ein Plugin-Default hinzu",
         "tasks": "Aufgabe hinzufügen",
         "triggers": "Füge einen Trigger hinzu"
       },
@@ -760,8 +847,8 @@
           "inputs": "Eingaben",
           "labels": "Labels",
           "outputs": "Ausgaben",
-          "plugin_defaults": "Plugin-Standardeinstellungen",
           "retry": "Wiederholen",
+          "sla": "SLA",
           "variables": "Variablen"
         },
         "main": {
@@ -776,27 +863,43 @@
         "variable": "Variable",
         "yaml": "YAML-Editor"
       },
-      "save": {
-        "error handlers": "Fehlerbehandlungsroutine speichern",
-        "finally": "Aufgabe speichern",
-        "input": "Eingabe speichern",
-        "tasks": "Aufgabe speichern",
-        "triggers": "Speicher Trigger"
-      },
       "sections": {
-        "error_handlers": "Fehlerbehandler",
+        "afterExecution": "Nach Ausführung",
+        "deprecated": "Veraltete Eigenschaften",
+        "errors": "Fehlerbehandler",
         "finally": "Schließlich",
         "general": "Allgemeine Eigenschaften",
         "main": "Haupteigenschaften",
         "optional": "Optionale Eigenschaften",
+        "pluginDefaults": "Plugin-Standardeinstellungen",
         "tasks": "Aufgaben",
         "triggers": "Trigger"
-      }
+      },
+      "select": {
+        "afterExecution": "Wählen Sie eine Task aus",
+        "conditions": "Wählen Sie eine Bedingung aus",
+        "errors": "Wählen Sie eine Task aus",
+        "finally": "Wählen Sie eine Task aus",
+        "pluginDefaults": "Wählen Sie ein Plugin aus",
+        "tasks": "Wählen Sie eine Task aus",
+        "triggers": "Wählen Sie einen Trigger aus"
+      },
+      "unnamed": "Kein Name"
     },
     "no_data": "Es sieht so aus, als wäre hier noch nichts... bisher!<br/>Passen Sie Ihre Filter an oder versuchen Sie es erneut!",
     "no_logs_data": "Keine Daten",
     "no_logs_data_description": "Entweder laufen keine Flows, oder Sie müssen Ihre Filter anpassen.",
     "no_namespaces": "Keine Namespaces entsprechen den Suchkriterien.",
+    "no_results": {
+      "executions": "Keine Ausführungen gefunden",
+      "flows": "Keine Flows gefunden",
+      "kv_pairs": "Keine Key-Value-Paare gefunden",
+      "secrets": "Keine Secrets gefunden",
+      "templates": "Keine Vorlagen gefunden",
+      "triggers": "Keine Trigger gefunden"
+    },
+    "no_results_found": "Keine Ergebnisse gefunden",
+    "no_tasks_running": "Noch keine Tasks laufen.",
     "now": "Jetzt",
     "of": "von",
     "ok": "OK",
@@ -884,8 +987,9 @@
     "pause confirm": "Sind Sie sicher, dass Sie die Ausführung <code>{id}</code> pausieren möchten?",
     "pause done": "Die Ausführung ist PAUSED.",
     "pause title": "Ausführung <code>{id}</code> pausieren.<br/>Bitte beachten Sie, dass derzeit laufende Tasks weiterhin verarbeitet werden und die Ausführung manuell fortgesetzt werden muss.",
-    "plugin defaults": "Plugin-Standardeinstellungen",
+    "pluginDefaults": "Plugin-Standardeinstellungen",
     "pluginPage": {
+      "alt": "Plugins-Symbol",
       "search": "Suche in {count}+ Plugins",
       "title1": "Plugins sind Bausteine für Ihre Workflows.",
       "title2": "Suchen Sie nach Tasks und Triggern, um Ihren Flow zu erstellen."
@@ -972,10 +1076,15 @@
       "saved": "Gespeicherte Filter"
     },
     "search term in message": "Suchbegriff in Nachricht",
+    "search_docs": "Suche",
+    "searching": "Suche läuft...",
     "seconds": "Sekunden",
     "secret": {
+      "add": "Neues Geheimnis",
       "inherited": "Geerbte Secrets",
-      "names": "Secrets"
+      "isReadOnly": "Geheimnis ist schreibgeschützt",
+      "names": "Secrets",
+      "update": "Aktualisiere Secret '{name}'"
     },
     "security_advice": {
       "content": "Aktivieren Sie die Basisauthentifizierung, um Ihre Instanz zu schützen.",
@@ -1001,13 +1110,16 @@
       "blocks": {
         "configuration": {
           "fields": {
+            "auto_refresh_interval": "Automatisches Aktualisierungsintervall",
             "default_namespace": "Standard-Namespace",
             "editor_type": "Standard-Editor-Typ",
             "execute_default_tab": "Standard-Ausführungs-Registerkarte",
             "execute_flow": "Flow ausführen",
+            "flow_default_tab": "Standard-Flow-Registerkarte",
             "language": "Sprache",
             "log_display": "Standard-Log-Anzeige",
-            "log_level": "Standard-Log-Ebene"
+            "log_level": "Standard-Log-Ebene",
+            "multi_panel_editor": "Multi-Panel-Editor"
           },
           "label": "Hauptkonfiguration"
         },
@@ -1027,10 +1139,10 @@
           "note": "Beachten Sie, dass diese Einstellung für die Anzeige von Datums- und Uhrzeiteigenschaften in der Benutzeroberfläche verwendet wird. Um Ihre Flows in einer anderen Zeitzone als UTC zu konfigurieren, stellen Sie sicher, dass Sie die Zeitzoneneigenschaft im Schedule-Trigger in Ihrem Flow-Code oder in Ihren Plugin-Standardeinstellungen festlegen."
         },
         "save": {
-          "fields": {
-            "name": "Änderungen speichern"
-          },
-          "label": "Präferenzen speichern"
+          "discard": "Verwerfen",
+          "label": "Präferenzen speichern",
+          "unsaved_title": "Nicht gespeicherte Änderungen",
+          "unsaved_warning": "Sie haben ungespeicherte Änderungen. Möchten Sie diese speichern, bevor Sie die Seite verlassen?"
         },
         "theme": {
           "fields": {
@@ -1110,8 +1222,12 @@
     "templates deleted": "<code>{count}</code> Vorlage(n) gelöscht",
     "templates deprecated": "Vorlagen sind veraltet. Bitte verwenden Sie stattdessen Subflows. Siehe den <a href=\"https://kestra.io/docs/migration-guide/0.11.0/templates\" target=\"_blank\">Migrationsabschnitt</a>, der erklärt, wie Sie von Vorlagen zu Subflows migrieren können.",
     "templates exported": "Vorlagen exportiert",
-    "tenant": "Tenant",
-    "tenants": "Tenants",
+    "tenant": {
+      "name": "Mandant",
+      "names": "Mandanten"
+    },
+    "test-badge-text": "Test",
+    "test-badge-tooltip": "Diese Ausführung wurde durch einen Test erstellt",
     "theme": "Modus",
     "this_task_has": "Diese Task hat",
     "timezone": "Zeitzone",
@@ -1120,7 +1236,8 @@
     "toggle fullscreen": "Vollbild umschalten",
     "toggle output": "Outputs umschalten",
     "toggle output display": "Outputanzeige umschalten",
-    "toggle periodic refresh each 10 seconds": "Periodische Aktualisierung alle 10 Sekunden umschalten",
+    "toggle periodic refresh each x seconds": "Periodische Aktualisierung alle {interval} Sekunden umschalten",
+    "toggle_word_wrap": "Zeilenumbruch umschalten",
     "topology": "Topologie",
     "topology-graph": {
       "graph-orientation": "Graph-Ausrichtung",
@@ -1131,6 +1248,7 @@
     },
     "trigger": "Trigger",
     "trigger details": "Trigger-Details",
+    "trigger disabled": "Trigger ist in der Flow-Quelle deaktiviert",
     "trigger execution id": "Trigger-Ausführungs-Id",
     "trigger filter": {
       "options": {
@@ -1148,10 +1266,6 @@
     "triggered done": "Ausführung <em>{name}</em> ist erfolgreich ausgelöst",
     "triggerflow disabled": "Trigger ist in der Flow-Definition deaktiviert",
     "triggers": "Trigger",
-    "triggers-view": {
-      "desc_no_triggers": "Lesen Sie mehr über <strong><a href=\"https://kestra.io/docs/workflow-components/triggers\" target=\"_blank\">Triggers</a></strong> in unserer Dokumentation.",
-      "title_no_triggers": "Ihr Flow hat keine Trigger."
-    },
     "triggers_state": {
       "options": {
         "disabled": "Deaktiviert",
@@ -1219,6 +1333,7 @@
     "worker group": "Worker-Gruppe",
     "worker group fallback": "Arbeitsgruppe Fallback",
     "worker group key": "Worker-Gruppe Schlüssel",
+    "worker information": "Worker-Informationen",
     "workerId": "Worker Id",
     "workers": "Workers",
     "wrong labels": "Leerer Key oder Value ist in Labels nicht erlaubt",
