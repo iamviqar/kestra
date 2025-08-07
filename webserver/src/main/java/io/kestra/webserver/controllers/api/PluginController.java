@@ -30,7 +30,7 @@ import java.util.stream.Stream;
 import static io.kestra.core.utils.Rethrow.throwFunction;
 
 @Validated
-@Controller("/api/v1/main/plugins/")
+@Controller("/api/v1/plugins/")
 public class PluginController {
     private static final String CACHE_DIRECTIVE = "public, max-age=3600";
 
@@ -47,8 +47,8 @@ public class PluginController {
     @ExecuteOn(TaskExecutors.IO)
     @Operation(
         tags = {"Plugins"},
-        summary = "Get all json schemas for a type",
-        description = "The schema will be output as [http://json-schema.org/draft-07/schema](Json Schema Draft 7)"
+        summary = "Get the JSON schema for a type",
+        description = "The schema will be a [JSON Schema Draft 7](http://json-schema.org/draft-07/schema)"
     )
     public HttpResponse<Map<String, Object>> getSchemasFromType(
         @Parameter(description = "The schema needed") @PathVariable SchemaType type,
@@ -56,6 +56,21 @@ public class PluginController {
     ) {
         return HttpResponse.ok()
             .body(jsonSchemaCache.getSchemaForType(type, arrayOf))
+            .header(HttpHeaders.CACHE_CONTROL, CACHE_DIRECTIVE);
+    }
+
+    @Get(uri = "properties/{type}")
+    @ExecuteOn(TaskExecutors.IO)
+    @Operation(
+        tags = {"Plugins"},
+        summary = "Get the properties part of the JSON schema for a type",
+        description = "The schema will be a [JSON Schema Draft 7](http://json-schema.org/draft-07/schema)"
+    )
+    public HttpResponse<Map<String, Object>> getPropertiesFromType(
+        @Parameter(description = "The schema needed") @PathVariable SchemaType type
+    ) {
+        return HttpResponse.ok()
+            .body(jsonSchemaCache.getPropertiesForType(type))
             .header(HttpHeaders.CACHE_CONTROL, CACHE_DIRECTIVE);
     }
 
@@ -75,12 +90,12 @@ public class PluginController {
     @ExecuteOn(TaskExecutors.IO)
     @Operation(
         tags = {"Plugins"},
-        summary = "Get json schemas for an input type",
-        description = "The schema will be output as [http://json-schema.org/draft-07/schema](Json Schema Draft 7)"
+        summary = "Get the JSON schema for an input type",
+        description = "The schema will be a [JSON Schema Draft 7](http://json-schema.org/draft-07/schema)"
     )
     public MutableHttpResponse<DocumentationWithSchema> getSchemaFromInputType(
         @Parameter(description = "The schema needed") @PathVariable Type type
-    ) throws ClassNotFoundException, IOException {
+    ) throws IOException {
         ClassInputDocumentation classInputDocumentation = this.inputDocumentation(type);
 
         return HttpResponse.ok()
@@ -237,18 +252,16 @@ public class PluginController {
     @Get("/groups/subgroups")
     @ExecuteOn(TaskExecutors.IO)
     @Operation(tags = {"Plugins"}, summary = "Get plugins group by subgroups")
-    public List<Plugin> getPluginBySubgroups(
-        @Parameter(description = "Whether to include deprecated plugins") @QueryValue(value = "includeDeprecated", defaultValue = "true") boolean includeDeprecated
-    ) {
+    public List<Plugin> getPluginBySubgroups() {
         return Stream.concat(
                 pluginRegistry.plugins()
                     .stream()
-                    .map(p -> Plugin.of(p, null, includeDeprecated)),
+                    .map(p -> Plugin.of(p, null)),
                 pluginRegistry.plugins()
                     .stream()
                     .flatMap(p -> p.subGroupNames()
                         .stream()
-                        .map(subgroup -> Plugin.of(p, subgroup, includeDeprecated))
+                        .map(subgroup -> Plugin.of(p, subgroup))
                     )
             )
             .distinct()
@@ -257,7 +270,7 @@ public class PluginController {
 
     protected ClassPluginDocumentation<?> buildPluginDocumentation(String className, String version, Boolean allProperties) {
         return pluginRegistry.findMetadataByIdentifier(getPluginIdentifier(className, version))
-            .map(metadata -> ClassPluginDocumentation.of(jsonSchemaGenerator, metadata, allProperties))
+            .map(metadata -> ClassPluginDocumentation.of(jsonSchemaGenerator, metadata, version, allProperties))
             .orElseThrow(() -> new NoSuchElementException("Class '" + className + "' doesn't exists "));
     }
 

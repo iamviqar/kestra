@@ -55,14 +55,7 @@
                         :language="FlowFilterLanguage"
                         :buttons="{
                             refresh: {shown: false},
-                            settings: {
-                                shown: true,
-                                charts: {
-                                    shown: true,
-                                    value: showChart,
-                                    callback: onShowChartChange,
-                                },
-                            },
+                            settings: {shown: false}
                         }"
                         :properties="{
                             shown: true,
@@ -71,14 +64,6 @@
                             storageKey: 'flows',
                         }"
                         @update-properties="updateDisplayColumns"
-                    />
-                </template>
-
-                <template v-if="showStatChart()" #top>
-                    <ChartsSection
-                        :charts="charts"
-                        :show-default="true"
-                        :full-size="true"
                     />
                 </template>
 
@@ -213,7 +198,7 @@
                                         :inverted="true"
                                         :date="
                                             getLastExecution(scope.row)
-                                                .startDate
+                                                ?.startDate
                                         "
                                     />
                                 </template>
@@ -228,18 +213,15 @@
                                 :label="$t('last execution status')"
                             >
                                 <template #default="scope">
-                                    <status
-                                        v-if="
-                                            lastExecutionByFlowReady &&
-                                                getLastExecution(scope.row)
-                                                    .lastStatus
-                                        "
-                                        :status="
-                                            getLastExecution(scope.row)
-                                                .lastStatus
-                                        "
-                                        size="small"
-                                    />
+                                    <div
+                                        v-if="lastExecutionByFlowReady && getLastExecution(scope.row)?.status"
+                                        class="d-flex justify-content-between align-items-center"
+                                    >
+                                        <Status :status="getLastExecution(scope.row)?.status" size="small" />
+                                        <div class="height: 100px;">
+                                            <Bar :chart="mappedChart(scope.row.id, scope.row.namespace)" show-default short />
+                                        </div>
+                                    </div>
                                 </template>
                             </el-table-column>
 
@@ -289,7 +271,6 @@
     import {ref} from "vue";
     import BulkSelect from "../layout/BulkSelect.vue";
     import SelectTable from "../layout/SelectTable.vue";
-    import * as YAML_UTILS from "@kestra-io/ui-libs/flow-yaml-utils";
     import Plus from "vue-material-design-icons/Plus.vue";
     import TextBoxSearch from "vue-material-design-icons/TextBoxSearch.vue";
     import Download from "vue-material-design-icons/Download.vue";
@@ -299,14 +280,16 @@
     import Upload from "vue-material-design-icons/Upload.vue";
     import KestraFilter from "../filter/KestraFilter.vue";
     import FlowFilterLanguage from "../../composables/monaco/languages/filters/impl/flowFilterLanguage.ts";
-    import YAML_CHART from "../../assets/dashboard/executions_timeseries_chart.yaml?raw";
-    import ChartsSection from "../dashboard/components/ChartsSection.vue";
+
+    import Bar from "../dashboard/sections/Bar.vue";
 
     const file = ref(null);
 </script>
 
 <script>
     import {mapState} from "vuex";
+    import {mapStores} from "pinia";
+    import {useExecutionsStore} from "../../stores/executions";
     import _merge from "lodash/merge";
     import permission from "../../models/permission";
     import action from "../../models/action";
@@ -324,6 +307,41 @@
     import Kicon from "../Kicon.vue";
     import Labels from "../layout/Labels.vue";
     import {storageKeys} from "../../utils/constants";
+    import * as YAML_UTILS from "@kestra-io/ui-libs/flow-yaml-utils";
+    import YAML_CHART from "../dashboard/assets/executions_timeseries_chart.yaml?raw";
+
+    const CHART_DEFINITION = {
+        id: "executions_per_namespace_bars",
+        type: "io.kestra.plugin.core.dashboard.chart.Bar",
+        chartOptions: {
+            displayName: "Executions (per namespace)",
+            legend: {enabled: false},
+            column: "total",
+            width: 12,
+        },
+        data: {
+            type: "io.kestra.plugin.core.dashboard.data.Executions",
+            columns: {
+                date: {field: "START_DATE", displayName: "Date"},
+                state: {field: "STATE"},
+                total: {displayName: "Executions", agg: "COUNT"},
+            },
+            where: [
+                {
+                    field: "NAMESPACE",
+                    type: "EQUAL_TO",
+                    value: "${namespace}",
+                },
+                {
+                    field: "FLOW_ID",
+                    type: "EQUAL_TO",
+                    value: "${flow_id}",
+                }
+            ]
+        },
+    };
+
+    CHART_DEFINITION.content = YAML_UTILS.stringify(CHART_DEFINITION);
 
     export default {
         mixins: [RouteContext, RestoreUrl, DataTableActions, SelectTableActions],
@@ -392,30 +410,21 @@
                 isDefaultNamespaceAllow: true,
                 permission: permission,
                 action: action,
-                dailyGroupByFlowReady: false,
-                lastExecutionByFlowReady: false,
-                dailyReady: false,
                 file: undefined,
-                showChart: ["true", null].includes(
-                    localStorage.getItem(storageKeys.SHOW_FLOWS_CHART),
-                ),
                 loading: false,
+                lastExecutionByFlowReady: false,
+                latestExecutions: [],
+                dblClickRouteName: "flows/update"
             };
         },
         computed: {
             ...mapState("flow", ["flows", "total"]),
-            ...mapState("stat", ["dailyGroupByFlow", "daily", "lastExecutions"]),
             ...mapState("auth", ["user"]),
+            ...mapStores(useExecutionsStore),
             routeInfo() {
                 return {
                     title: this.$t("flows"),
                 };
-            },
-            endDate() {
-                return new Date();
-            },
-            startDate() {
-                return this.$moment(this.endDate).add(-30, "days").toDate();
             },
             canCheck() {
                 return this.canRead || this.canDelete || this.canUpdate;
@@ -459,14 +468,6 @@
                     )
                 );
             },
-            executionsCount() {
-                return [...this.daily].reduce((a, b) => {
-                    return (
-                        a +
-                        Object.values(b.executionCounts).reduce((a, b) => a + b, 0)
-                    );
-                }, 0);
-            },
             charts() {
                 return [
                     {...YAML_UTILS.parse(YAML_CHART), content: YAML_CHART}
@@ -479,10 +480,9 @@
             );
             const query = {...to.query};
             let queryHasChanged = false;
-
             const queryKeys = Object.keys(query);
             if (defaultNamespace && !queryKeys.some(key => key.startsWith("filters[namespace]"))) {
-                query["filters[namespace][EQUALS]"] = defaultNamespace;
+                query["filters[namespace][PREFIX]"] = defaultNamespace;
                 queryHasChanged = true;
             }
 
@@ -529,13 +529,6 @@
             updateDisplayColumns(newColumns) {
                 this.displayColumns = newColumns;
             },
-            showStatChart() {
-                return this.showChart;
-            },
-            onShowChartChange(value) {
-                this.showChart = value;
-                localStorage.setItem(storageKeys.SHOW_FLOWS_CHART, value);
-            },
             exportFlows() {
                 this.$toast().confirm(
                     this.$t("flow export", {
@@ -544,15 +537,21 @@
                             : this.selection.length,
                     }),
                     () => {
+                        const flowCount = this.queryBulkAction
+                            ? this.total
+                            : this.selection.length;
+
                         if (this.queryBulkAction) {
                             return this.$store
                                 .dispatch(
                                     "flow/exportFlowByQuery",
                                     this.loadQuery(),
                                 )
-                                .then((_) => {
+                                .then(() => {
                                     this.$toast().success(
-                                        this.$t("flows exported"),
+                                        this.$t("flows exported", {
+                                            count: flowCount,
+                                        }),
                                     );
                                 });
                         } else {
@@ -560,9 +559,11 @@
                                 .dispatch("flow/exportFlowByIds", {
                                     ids: this.selection,
                                 })
-                                .then((_) => {
+                                .then(() => {
                                     this.$toast().success(
-                                        this.$t("flows exported"),
+                                        this.$t("flows exported", {
+                                            count: flowCount,
+                                        }),
                                     );
                                 });
                         }
@@ -699,103 +700,69 @@
             importFlows() {
                 const formData = new FormData();
                 formData.append("fileUpload", this.$refs.file.files[0]);
-                this.$store.dispatch("flow/importFlows", formData).then((res) => {
-                    if (res.data.length > 0) {
-                        this.$toast().warning(
-                            this.$t("flows not imported") +
-                                ": " +
-                                res.data.join(", "),
-                        );
-                    } else {
-                        this.$toast().success(this.$t("flows imported"));
-                    }
-                    this.$refs.importForm.reset();
-                    this.loadData(() => {});
-                });
+                this.$store.dispatch("flow/importFlows", formData)
+                    .then((res) => {
+                        if (res.data.length > 0) {
+                            this.$toast().warning(
+                                this.$t("flows not imported") +
+                                    ": " +
+                                    res.data.join(", "),
+                            );
+                        } else {
+                            this.$toast().success(this.$t("flows imported"));
+                        }
+                        this.$refs.file.value = "";
+                        this.loadData(() => {});
+                    });
             },
             getLastExecution(row) {
-                let noState = {state: null, startDate: null};
-                if (this.lastExecutions && this.lastExecutions.length > 0) {
-                    let filteredFlowExec = this.lastExecutions.filter(
-                        (executedFlow) =>
-                            executedFlow.flowId == row.id &&
-                            executedFlow.namespace == row.namespace,
-                    );
-                    if (filteredFlowExec.length > 0) {
-                        return {
-                            lastStatus: filteredFlowExec[0].state?.current,
-                            startDate: filteredFlowExec[0].state?.startDate,
-                        };
-                    }
-                    return noState;
-                } else {
-                    return noState;
-                }
+                if (!this.latestExecutions || !row) return null;
+                return this.latestExecutions.find(
+                    e => e.flowId === row.id && e.namespace === row.namespace
+                ) ?? null;
             },
-            loadQuery(base, ignoreDateFilters = true) {
+            loadQuery(base) {
                 let queryFilter = this.queryWithFilter(
                     undefined,
-                    ignoreDateFilters ? ["startDate", "endDate", "timeRange"] : []
+                    []
                 );
 
                 if (this.namespace) {
-                    queryFilter["filters[namespace][EQUALS]"] = this.namespace;
+                    queryFilter["filters[namespace][PREFIX]"] = this.$route.params.id || this.namespace;
                 }
 
                 return _merge(base, queryFilter);
             },
             loadData(callback) {
+                const q = this.$route.query;
+
                 this.$store
                     .dispatch(
                         "flow/findFlows",
                         this.loadQuery({
-                            size: parseInt(this.$route.query.size || 25),
-                            page: parseInt(this.$route.query.page || 1),
-                            sort: this.$route.query.sort || "id:asc",
+                            size: parseInt(this.namespace ? this.internalPageSize : q.size ?? 25),
+                            page: parseInt(this.namespace ? this.internalPageNumber : q.page ?? 1),
+                            sort: q.sort ?? "id:asc",
                         }),
                     )
-                    .then((flows) => {
-                        this.dailyGroupByFlowReady = false;
-                        this.lastExecutionByFlowReady = false;
-
-                        if (flows.results && flows.results.length > 0) {
-                            if (
-                                this.user &&
-                                this.user.hasAny(permission.EXECUTION)
-                            ) {
-                                this.$store
-                                    .dispatch("stat/dailyGroupByFlow", {
-                                        flows: flows.results.map((flow) => {
-                                            return {
-                                                namespace: flow.namespace,
-                                                id: flow.id,
-                                            };
-                                        }),
-                                        startDate: this.$moment(this.startDate)
-                                            .add(-1, "day")
-                                            .startOf("day")
-                                            .toISOString(true),
-                                        endDate: this.$moment(this.endDate)
-                                            .endOf("day")
-                                            .toISOString(true),
+                    .then(data => {
+                        if(this.user.hasAnyActionOnAnyNamespace(
+                            permission.EXECUTION,
+                            action.READ,
+                        )) {
+                            this.executionsStore.loadLatestExecutions(
+                                {
+                                    flowFilters: data.results.map(flow => {
+                                        return {
+                                            id: flow.id,
+                                            namespace: flow.namespace
+                                        };
                                     })
-                                    .then(() => {
-                                        this.dailyGroupByFlowReady = true;
-                                    });
-
-                                this.$store
-                                    .dispatch("stat/lastExecutions", {
-                                        flows: flows.results.map((flow) => {
-                                            return {
-                                                namespace: flow.namespace,
-                                                id: flow.id,
-                                            };
-                                        }),
-                                    })
-                                    .then(() => {
-                                        this.lastExecutionByFlowReady = true;
-                                    });
-                            }
+                                }
+                            ).then(latestExecs => {
+                                this.latestExecutions = latestExecs;
+                                this.lastExecutionByFlowReady = true;
+                            });
                         }
                     })
                     .finally(callback);
@@ -803,7 +770,14 @@
             rowClasses(row) {
                 return row && row.row && row.row.disabled ? "disabled" : "";
             },
-        },
+            mappedChart(id, namespace) {
+                let MAPPED_CHARTS = JSON.parse(JSON.stringify(CHART_DEFINITION));
+                
+                MAPPED_CHARTS.content = MAPPED_CHARTS.content.replace("${namespace}", namespace).replace("${flow_id}", id);
+
+                return MAPPED_CHARTS;
+            }
+        }
     };
 </script>
 

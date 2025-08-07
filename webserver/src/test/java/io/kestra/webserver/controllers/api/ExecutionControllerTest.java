@@ -257,6 +257,17 @@ class ExecutionControllerTest {
         assertThrows(HttpClientResponseException.class, () -> client.toBlocking().retrieve(requestNullValue, Execution.class));
     }
 
+    @Test
+    void duplicatedLabels() {
+        MultipartBody requestBody = createExecutionInputsFlowBody();
+
+        // duplicated keys are forbidden
+        MutableHttpRequest<MultipartBody> requestNullKey = HttpRequest
+            .POST("/api/v1/main/executions/" + TESTS_FLOW_NS + "/inputs?labels=key:value1&labels=key:value2", requestBody)
+            .contentType(MediaType.MULTIPART_FORM_DATA_TYPE);
+        assertThrows(HttpClientResponseException.class, () -> client.toBlocking().retrieve(requestNullKey, Execution.class));
+    }
+
     @SuppressWarnings("DataFlowIssue")
     @Test
     void getExecutionFlowForExecution() {
@@ -327,8 +338,14 @@ class ExecutionControllerTest {
     }
 
     @Test
-    void badDate() {
+    void badQueryFilters() {
         HttpClientResponseException exception = assertThrows(HttpClientResponseException.class, () ->
+            client.toBlocking().retrieve(GET(
+                "/api/v1/main/executions/search?filters[triggerId][EQUALS]=test"), PagedResults.class));
+        assertThat(exception.getStatus().getCode()).isEqualTo(HttpStatus.BAD_REQUEST.getCode());
+        assertThat(exception.getMessage()).isEqualTo("Field TRIGGER_ID is not supported for resource EXECUTION. Supported fields are QUERY, SCOPE, FLOW_ID, START_DATE, END_DATE, STATE, LABELS, TRIGGER_EXECUTION_ID, CHILD_FILTER, NAMESPACE: Provided query filters are invalid");
+
+        exception = assertThrows(HttpClientResponseException.class, () ->
             client.toBlocking().retrieve(GET(
                 "/api/v1/main/executions/search?filters[startDate][EQUALS]=2024-06-03T00:00:00.000%2B02:00&filters[endDate][EQUALS]=2023-06-05T00:00:00.000%2B02:00"), PagedResults.class));
         assertThat(exception.getStatus().getCode()).isEqualTo(422);

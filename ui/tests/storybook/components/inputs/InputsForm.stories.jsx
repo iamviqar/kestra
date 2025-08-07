@@ -1,10 +1,20 @@
 import {defineComponent, ref} from "vue";
-import {expect, userEvent, waitFor, within} from "@storybook/test";
+import {expect, userEvent, waitFor, within} from "storybook/test";
+import {vueRouter} from "storybook-vue3-router";
 import InputsForm from "../../../../src/components/inputs/InputsForm.vue";
 
 const meta = {
     title: "inputs/InputsForm",
-    component: InputsForm
+    component: InputsForm,
+    decorators: [
+                vueRouter([
+                    {
+                        path: "/",
+                        name: "home",
+                        component: InputsForm
+                    }
+                ])
+            ],
 };
 
 export default meta;
@@ -26,7 +36,7 @@ const Sut = defineComponent((props) => {
 });
 
 /**
- * @type {import("@storybook/vue3").StoryObj<typeof InputsForm>}
+ * @type {import("@storybook/vue3-vite").StoryObj<typeof InputsForm>}
  */
 export const InputTypes = {
     async play({canvasElement}) {
@@ -46,7 +56,9 @@ export const InputTypes = {
             expect(can.getByTestId("test-content").textContent).to.include("foo@example.com");
         });
 
-        await userEvent.click(can.getByLabelText("Single select input"));
+        const input = await waitFor(() => can.getByLabelText("Single select input"));
+
+        await userEvent.click(input);
         await userEvent.click(popups.getByText("Second value"));
 
         await waitFor(function testSelect() {

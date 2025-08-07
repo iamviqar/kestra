@@ -56,7 +56,7 @@
                     :icon="CalendarCollapseHorizontalOutline"
                     v-if="isSchedule(scope.row.type) && !scope.row.backfill && userCan(action.CREATE)"
                     @click="setBackfillModal(scope.row, true)"
-                    :disabled="scope.row.disabled"
+                    :disabled="scope.row.disabled || scope.row.sourceDisabled"
                     size="small"
                     type="primary"
                 >
@@ -270,7 +270,7 @@
 
 <script>
     import Markdown from "../layout/Markdown.vue";
-    import {mapGetters, mapState} from "vuex";
+    import {mapState} from "vuex";
     import Kicon from "../Kicon.vue"
     import DateAgo from "../layout/DateAgo.vue";
     import Vars from "../executions/Vars.vue";
@@ -281,6 +281,8 @@
     import LogsWrapper from "../logs/LogsWrapper.vue";
     import _isEqual from "lodash/isEqual";
     import {storageKeys} from "../../utils/constants.js";
+    import {mapStores} from "pinia";
+    import {useTriggerStore} from "../../stores/trigger";
 
     export default {
         components: {Markdown, Kicon, DateAgo, Vars, Drawer, LogsWrapper},
@@ -317,7 +319,8 @@
         },
         computed: {
             ...mapState("auth", ["user"]),
-            ...mapGetters("flow", ["flow"]),
+            ...mapState("flow", ["flow"]),
+            ...mapStores(useTriggerStore),
             query() {
                 return Array.isArray(this.$route.query.q) ? this.$route.query.q[0] : this.$route.query.q;
             },
@@ -387,6 +390,9 @@
             editorViewType() {
                 return localStorage.getItem(storageKeys.EDITOR_VIEW_TYPE) === "NO_CODE";
             },
+            triggerStore() {
+                return useTriggerStore();
+            },
         },
         methods: {
             userCan(action) {
@@ -395,8 +401,8 @@
             loadData() {
                 if(!this.triggersWithType.length) return;
 
-                this.$store
-                    .dispatch("trigger/find", {namespace: this.flow.namespace, flowId: this.flow.id, size: this.triggersWithType.length, q: this.query})
+                this.triggerStore
+                    .find({namespace: this.flow.namespace, flowId: this.flow.id, size: this.triggersWithType.length, q: this.query})
                     .then(triggers => this.triggers = triggers.results);
             },
             setBackfillModal(trigger, bool) {
@@ -404,7 +410,7 @@
                 this.selectedTrigger = trigger
             },
             postBackfill() {
-                this.$store.dispatch("trigger/update", {
+                this.triggerStore.update({
                     ...this.selectedTrigger,
                     backfill: this.cleanBackfill
                 })
@@ -427,7 +433,7 @@
 
             },
             pauseBackfill(trigger) {
-                this.$store.dispatch("trigger/pauseBackfill", trigger)
+                this.triggerStore.pauseBackfill(trigger)
                     .then(newTrigger => {
                         this.$toast().saved(newTrigger.id);
                         this.triggers = this.triggers.map(t => {
@@ -439,7 +445,7 @@
                     })
             },
             unpauseBackfill(trigger) {
-                this.$store.dispatch("trigger/unpauseBackfill", trigger)
+                this.triggerStore.unpauseBackfill(trigger)
                     .then(newTrigger => {
                         this.$toast().saved(newTrigger.id);
                         this.triggers = this.triggers.map(t => {
@@ -451,7 +457,7 @@
                     })
             },
             deleteBackfill(trigger) {
-                this.$store.dispatch("trigger/deleteBackfill", trigger)
+                this.triggerStore.deleteBackfill(trigger)
                     .then(newTrigger => {
                         this.$toast().saved(newTrigger.id);
                         this.triggers = this.triggers.map(t => {
@@ -463,7 +469,7 @@
                     })
             },
             setDisabled(trigger, value) {
-                this.$store.dispatch("trigger/update", {...trigger, disabled: !value})
+                this.triggerStore.update({...trigger, disabled: !value})
                     .then(newTrigger => {
                         this.$toast().saved(newTrigger.id);
                         this.triggers = this.triggers.map(t => {
@@ -475,7 +481,7 @@
                     })
             },
             unlock(trigger) {
-                this.$store.dispatch("trigger/unlock", {
+                this.triggerStore.unlock({
                     namespace: trigger.namespace,
                     flowId: trigger.flowId,
                     triggerId: trigger.triggerId
@@ -490,7 +496,7 @@
                 })
             },
             restart(trigger) {
-                this.$store.dispatch("trigger/restart", {
+                this.triggerStore.restart({
                     namespace: trigger.namespace,
                     flowId: trigger.flowId,
                     triggerId: trigger.triggerId

@@ -1,6 +1,7 @@
 package io.kestra.webserver.controllers.api;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import io.kestra.core.docs.JsonSchemaGenerator;
 import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.InternalException;
@@ -69,7 +70,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Validated
-@Controller("/api/v1/main/flows")
+@Controller("/api/v1/{tenant}/flows")
 @Slf4j
 public class FlowController {
     private static final String WARNING_JSON_FLOW_ENDPOINT = "This endpoint is deprecated. Handling flows as 'application/json' is no longer supported and will be removed in a future release. Please use the same endpoint with an 'application/x-yaml' content type.";
@@ -85,9 +86,6 @@ public class FlowController {
 
     @Inject
     private FlowTopologyService flowTopologyService;
-
-    @Inject
-    private FlowTopologyRepositoryInterface flowTopologyRepository;
 
     @Inject
     private FlowService flowService;
@@ -133,7 +131,7 @@ public class FlowController {
         if (flow instanceof FlowWithException fwe) {
             throw new IllegalStateException(
                 "Unable to generate graph for flow " + flowUid +
-                    " because of exception " + fwe.getException()
+                " because of exception " + fwe.getException()
             );
         }
 
@@ -282,7 +280,7 @@ public class FlowController {
     }
 
     /**
-     * @deprecated use {@link #create(String)} instead
+     * @deprecated use {@link #createFlow(String)} (String)} instead
      */
     @ExecuteOn(TaskExecutors.IO)
     @Post(consumes = MediaType.ALL)
@@ -316,7 +314,7 @@ public class FlowController {
         tags = {"Flows"},
         summary = "Update a complete namespace from yaml source",
         description = "All flow will be created / updated for this namespace.\n" +
-            "Flow that already created but not in `flows` will be deleted if the query delete is `true`"
+                      "Flow that already created but not in `flows` will be deleted if the query delete is `true`"
     )
     public List<FlowInterface> updateFlowsInNamespace(
         @Parameter(description = "The flow namespace") @PathVariable String namespace,
@@ -342,7 +340,7 @@ public class FlowController {
         tags = {"Flows"},
         summary = "Update a complete namespace from json object",
         description = "All flow will be created / updated for this namespace.\n" +
-            "Flow that already created but not in `flows` will be deleted if the query delete is `true`",
+                      "Flow that already created but not in `flows` will be deleted if the query delete is `true`",
         deprecated = true
     )
     @Deprecated(forRemoval = true, since = "0.18")
@@ -516,7 +514,7 @@ public class FlowController {
         tags = {"Flows"},
         summary = "Update from multiples yaml sources",
         description = "All flow will be created / updated for this namespace.\n" +
-            "Flow that already created but not in `flows` will be deleted if the query delete is `true`"
+                      "Flow that already created but not in `flows` will be deleted if the query delete is `true`"
     )
     public List<FlowInterface> bulkUpdateFlows(
         @RequestBody(description = "A list of flows source code splitted with \"---\"") @Body @Nullable String flows,
@@ -601,12 +599,13 @@ public class FlowController {
     public FlowTopologyGraph getFlowDependencies(
         @Parameter(description = "The flow namespace") @PathVariable String namespace,
         @Parameter(description = "The flow id") @PathVariable String id,
-        @Parameter(description = "If true, list only destination dependencies, otherwise list also source dependencies") @QueryValue(defaultValue = "false") boolean destinationOnly
+        @Parameter(description = "If true, list only destination dependencies, otherwise list also source dependencies") @QueryValue(defaultValue = "false") boolean destinationOnly,
+        @Parameter(description = "If true, expand all dependencies recursively") @QueryValue(defaultValue = "false") boolean expandAll
     ) {
-        List<FlowTopology> flowTopologies = flowTopologyRepository.findByFlow(tenantService.resolveTenant(), namespace, id, destinationOnly);
+        Stream<FlowTopology> flowTopologyStream = flowService.findDependencies(tenantService.resolveTenant(), namespace, id, destinationOnly, expandAll);
 
         return flowTopologyService.graph(
-            flowTopologies.stream(),
+            flowTopologyStream,
             (flowNode -> flowNode)
         );
     }
@@ -836,19 +835,19 @@ public class FlowController {
     }
 
     protected static List<QueryFilter> mapLegacyQueryParamsToNewFilters(List<QueryFilter> filters, String query, List<FlowScope> scope, String namespace, List<String> labels) {
-            filters = RequestUtils.getFiltersOrDefaultToLegacyMapping(
-                filters,
-                query,
-                namespace,
-                null,
-                null,
-                null,
-                scope,
-                labels,
-                null,
-                null,
-                null,
-                null);
+        filters = RequestUtils.getFiltersOrDefaultToLegacyMapping(
+            filters,
+            query,
+            namespace,
+            null,
+            null,
+            null,
+            scope,
+            labels,
+            null,
+            null,
+            null,
+            null);
 
         return filters;
     }

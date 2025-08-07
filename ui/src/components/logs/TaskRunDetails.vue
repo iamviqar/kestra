@@ -15,23 +15,23 @@
                 :data-index="currentTaskRunIndex"
             >
                 <el-card class="attempt-wrapper">
-                    <task-run-line
+                    <TaskRunLine
                         :current-task-run="currentTaskRun"
                         :followed-execution="followedExecution"
                         :flow="flow"
                         :forced-attempt-number="forcedAttemptNumber"
                         :task-run-id="taskRunId"
-                        @toggle-show-attempt="toggleShowAttempt"
-                        @swap-displayed-attempt="swapDisplayedAttempt"
                         :selected-attempt-number-by-task-run-id="selectedAttemptNumberByTaskRunId"
                         :shown-attempts-uid="shownAttemptsUid"
                         :logs="filteredLogs"
+                        @toggle-show-attempt="toggleShowAttempt"
+                        @swap-displayed-attempt="swapDisplayedAttempt"
                         @update-logs="loadLogs"
                     >
                         <template #buttons>
                             <div id="buttons" />
                         </template>
-                    </task-run-line>
+                    </TaskRunLine>
                     <for-each-status
                         v-if="shouldDisplayProgressBar(currentTaskRun)"
                         :execution-id="currentTaskRun.executionId"
@@ -113,14 +113,17 @@
     import Download from "vue-material-design-icons/Download.vue";
     import {DynamicScroller, DynamicScrollerItem} from "vue-virtual-scroller";
     import {mapState} from "vuex";
+    import {mapStores} from "pinia";
+    import {useCoreStore} from "../../stores/core";
+    import {useExecutionsStore} from "../../stores/executions";
     import ForEachStatus from "../executions/ForEachStatus.vue";
     import TaskRunLine from "../executions/TaskRunLine.vue";
     import FlowUtils from "../../utils/flowUtils";
-    import throttle from "lodash/throttle";
     import FilePreview from "../executions/FilePreview.vue";
     import {apiUrl} from "override/utils/route";
     import Utils from "../../utils/utils";
     import LogUtils from "../../utils/logs.js";
+    import throttle from "lodash/throttle";
 
     export default {
         name: "TaskRunDetails",
@@ -163,12 +166,6 @@
                 type: Number,
                 default: undefined
             },
-            // allows to pass directly a raw execution (since it is already fetched by parent component)
-            targetExecution: {
-                type: Object,
-                required: false,
-                default: undefined
-            },
             // allows to fetch the execution at startup
             targetExecutionId: {
                 type: String,
@@ -203,20 +200,18 @@
                 timer: undefined,
                 timeout: undefined,
                 selectedAttemptNumberByTaskRunId: {},
-                followedExecution: undefined,
                 executionSSE: undefined,
                 logsSSE: undefined,
                 flow: undefined,
                 logsBuffer: [],
                 shownSubflowsIds: [],
                 logFileSizeByPath: {},
-                throttledExecutionUpdate: throttle(function (event) {
-                    this.followedExecution = JSON.parse(event.data)
-                }, 500),
                 selectedLogLevel: undefined,
                 childrenLogIndicesByLevelByChildUid: {},
                 logsScrollerRefs: {},
-                subflowTaskRunDetailsRefs: {}
+                subflowTaskRunDetailsRefs: {},
+                throttledExecutionUpdate: undefined,
+                targetExecution: undefined
             };
         },
         watch: {
@@ -227,11 +222,6 @@
                 this.rawLogs = [];
                 this.loadLogs(this.followedExecution.id);
             },
-            execution: function () {
-                if (this.execution && this.execution.state.current !== State.RUNNING && this.execution.state.current !== State.PAUSED) {
-                    this.closeExecutionSSE();
-                }
-            },
             currentTaskRuns: {
                 handler(taskRuns) {
                     // by default we preselect the last attempt for each task run
@@ -240,14 +230,6 @@
                 },
                 immediate: true,
                 deep: true
-            },
-            targetExecution: {
-                handler: function (newExecution) {
-                    if (newExecution) {
-                        this.followedExecution = newExecution;
-                    }
-                },
-                immediate: true
             },
             targetFlow: {
                 handler: function (flowSource) {
@@ -274,18 +256,17 @@
                     }
 
                     if (!this.targetFlow) {
-                        this.flow = await this.$store.dispatch(
-                            "execution/loadFlowForExecution",
+                        this.flow = await this.executionsStore.loadFlowForExecution(
                             {
                                 namespace: newExecution.namespace,
                                 flowId: newExecution.flowId,
-                                revision: newExecution.flowRevision
+                                revision: newExecution.flowRevision,
+                                store: false
                             }
                         );
                     }
 
-                    if (![State.RUNNING, State.PAUSED].includes(this.followedExecution.state.current)) {
-                        this.closeExecutionSSE()
+                    if (!State.isRunning(this.followedExecution.state.current)) {
                         // wait a bit to make sure we don't miss logs as log indexer is asynchronous
                         setTimeout(() => {
                             this.closeLogsSSE()
@@ -315,6 +296,10 @@
             }
         },
         mounted() {
+            this.throttledExecutionUpdate = throttle((executionEvent) => {
+                this.targetExecution = JSON.parse(executionEvent.data);
+            }, 500);
+
             if (this.targetExecutionId) {
                 this.followExecution(this.targetExecutionId);
             }
@@ -322,8 +307,11 @@
             this.autoExpandBasedOnSettings();
         },
         computed: {
-            ...mapState("plugin", ["icons"]),
             ...mapState("auth", ["user"]),
+            ...mapStores(useCoreStore, useExecutionsStore),
+            followedExecution() {
+                return this.targetExecutionId === undefined ? this.executionsStore.execution : this.targetExecution;
+            },
             Download() {
                 return Download
             },
@@ -361,7 +349,7 @@
 
                 return _groupBy(indexedLogs, indexedLog => this.attemptUid(indexedLog.taskRunId, indexedLog.attemptNumber));
             },
-            autoExpandTaskrunStates() {
+            autoExpandTaskRunStates() {
                 switch (localStorage.getItem("logDisplay") || logDisplayTypes.DEFAULT) {
                 case logDisplayTypes.ERROR:
                     return [State.FAILED, State.RUNNING, State.PAUSED]
@@ -426,12 +414,6 @@
                 });
                 this.logFileSizeByPath[path] = Utils.humanFileSize(axiosResponse.data.size);
             },
-            closeExecutionSSE() {
-                if (this.executionSSE) {
-                    this.executionSSE.close();
-                    this.executionSSE = undefined;
-                }
-            },
             closeLogsSSE() {
                 if (this.logsSSE) {
                     this.logsSSE.close();
@@ -446,7 +428,7 @@
                 }
             },
             autoExpandBasedOnSettings() {
-                if (this.autoExpandTaskrunStates.length === 0) {
+                if (this.autoExpandTaskRunStates.length === 0) {
                     return;
                 }
 
@@ -459,7 +441,7 @@
                         return;
                     }
 
-                    if (this.taskRunId === taskRun.id || this.autoExpandTaskrunStates.includes(taskRun.state.current)) {
+                    if (this.taskRunId === taskRun.id || this.autoExpandTaskRunStates.includes(taskRun.state.current)) {
                         this.showAttempt(this.attemptUid(taskRun.id, this.selectedAttemptNumberByTaskRunId[taskRun.id]));
                     }
                 });
@@ -476,29 +458,34 @@
                         this.logsWithIndexByAttemptUid[this.attemptUid(taskRun.id, this.selectedAttemptNumberByTaskRunId[taskRun.id])])) &&
                     this.showLogs
             },
+            closeTargetExecutionSSE() {
+                if (this.executionSSE) {
+                    this.executionSSE.close();
+                    this.executionSSE = undefined;
+                }
+            },
             followExecution(executionId) {
-                this.$store
-                    .dispatch("execution/followExecution", {id: executionId})
+                this.closeTargetExecutionSSE();
+                this.executionsStore
+                    .followExecution({id: executionId, rawSSE: true})
                     .then(sse => {
                         this.executionSSE = sse;
                         this.executionSSE.onmessage = executionEvent => {
                             const isEnd = executionEvent && executionEvent.lastEventId === "end";
-                            if (isEnd) {
-                                this.closeExecutionSSE();
-                            }
                             // we are receiving a first "fake" event to force initializing the connection: ignoring it
                             if (executionEvent.lastEventId !== "start") {
                                 this.throttledExecutionUpdate(executionEvent);
                             }
                             if (isEnd) {
+                                this.closeTargetExecutionSSE();
                                 this.throttledExecutionUpdate.flush();
                             }
                         }
                     });
             },
             followLogs(executionId) {
-                this.$store
-                    .dispatch("execution/followLogs", {id: executionId})
+                this.executionsStore
+                    .followLogs({id: executionId})
                     .then(sse => {
                         this.logsSSE = sse;
 
@@ -528,11 +515,11 @@
                         }
 
                         this.logsSSE.onerror = _ => {
-                            this.$store.dispatch("core/showMessage", {
+                            this.coreStore.message = {
                                 variant: "error",
                                 title: this.$t("error"),
                                 message: this.$t("something_went_wrong.loading_execution"),
-                            });
+                            };
                         }
                     })
 
@@ -583,7 +570,7 @@
                 return `${taskRunId}-${attemptNumber}`
             },
             scrollToBottomFailedTask() {
-                if (this.autoExpandTaskrunStates.includes(this.followedExecution.state.current)) {
+                if (this.autoExpandTaskRunStates.includes(this.followedExecution?.state?.current)) {
                     this.currentTaskRuns.forEach((taskRun) => {
                         if (taskRun.state.current === State.FAILED || taskRun.state.current === State.RUNNING) {
                             const attemptNumber = taskRun.attempts ? taskRun.attempts.length - 1 : (this.forcedAttemptNumber ?? 0)
@@ -602,7 +589,7 @@
                     return;
                 }
 
-                this.$store.dispatch("execution/loadLogs", {
+                this.executionsStore.loadLogs({
                     executionId,
                     params: {
                         minLevel: this.level
@@ -667,7 +654,6 @@
             }
         },
         beforeUnmount() {
-            this.closeExecutionSSE();
             this.closeLogsSSE()
         },
     };
@@ -676,8 +662,6 @@
     @import "@kestra-io/ui-libs/src/scss/variables";
 
     .log-wrapper {
-        max-height: calc(100vh - 233px);
-
         :deep(> .vue-recycle-scroller__item-wrapper > .vue-recycle-scroller__item-view > div) {
             padding-bottom: 1rem;
         }

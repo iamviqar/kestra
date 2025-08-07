@@ -28,8 +28,8 @@
                             v-if="currentStep(tour).title"
                             class="title"
                             :class="{
-                                dark: currentStep(tour).keepDark, 
-                                empty: !flows.length, 
+                                dark: currentStep(tour).keepDark,
+                                empty: !flows.length,
                                 fixed: tour.currentStep === 1
                             }"
                         >
@@ -69,7 +69,7 @@
                                     >
                                         <TaskIcon
                                             :cls="task"
-                                            :icons="icons"
+                                            :icons="pluginsStore.icons"
                                             :variable="ICON_COLOR"
                                             only-icon
                                         />
@@ -134,7 +134,6 @@
     import {computed, getCurrentInstance, onMounted, ref, watch} from "vue";
 
     import {useRouter} from "vue-router";
-    import {useStore} from "vuex";
     import {useI18n} from "vue-i18n";
 
     import Wrapper from "./components/buttons/Wrapper.vue";
@@ -158,23 +157,28 @@
     import ArrowTop from "../../assets/onboarding/icons/arrow-top.svg";
     import ArrowRight from "../../assets/onboarding/icons/arrow-right.svg";
 
-    import {editorViewTypes} from "../../utils/constants";
+    import {useApiStore} from "../../stores/api";
+    import {usePluginsStore} from "../../stores/plugins";
+    import {useCoreStore} from "../../stores/core";
+    import {useEditorStore} from "../../stores/editor";
 
     const router = useRouter();
-    const store = useStore();
 
-    const icons = computed(() => store.state.plugin.icons);
+    const coreStore = useCoreStore();
+    const apiStore = useApiStore();
+    const pluginsStore = usePluginsStore();
+    const editorStore = useEditorStore()
 
     const {t} = useI18n({useScope: "global"});
 
     const updateStatus = () => localStorage.setItem("tourDoneOrSkip", "true");
     const dispatchEvent = (step, action) =>
-        store.dispatch("api/events", {
+        apiStore.events({
             type: "ONBOARDING",
             onboarding: {
                 step,
                 action,
-                template: store.getters["core/guidedProperties"].template,
+                template: coreStore.guidedProperties.template,
             },
             page: pageFromRoute(router.currentRoute.value),
         });
@@ -210,7 +214,7 @@
     };
 
     const activeFlow = ref(0);
-    const flows = computed(() => store.state.core.tutorialFlows);
+    const flows = computed(() => coreStore.tutorialFlows);
 
     const allTasks = (tasks) => {
         const uniqueTypes = new Set();
@@ -254,9 +258,10 @@
     });
 
     watch(activeFlow, async (newValue) => {
-        store.commit("core/setGuidedProperties", {
+        coreStore.guidedProperties = {
+            ...coreStore.guidedProperties,
             template: flows.value[newValue].id,
-        });
+        };
     });
 
     const properties = (step, c = true, p = true, s = false) => ({
@@ -285,10 +290,10 @@
             before: () => {
                 toggleScroll(false);
 
-                store.commit("core/setGuidedProperties", {
+                coreStore.guidedProperties = {
+                    ...coreStore.guidedProperties,
                     tourStarted: true,
-                    fullscreen: true,
-                });
+                };
 
                 return wait();
             },
@@ -306,17 +311,19 @@
                         tab: "edit",
                     },
                 });
-                store.commit("core/setGuidedProperties", {
+                coreStore.guidedProperties = {
+                    ...coreStore.guidedProperties,
                     manuallyContinue: true,
-                });
+                };
             },
             before: () => {
-                store.commit("editor/updateOnboarding");
+                editorStore.updateOnboarding()
 
-                store.commit("core/setGuidedProperties", {
+                coreStore.guidedProperties = {
+                    ...coreStore.guidedProperties,
                     tourStarted: true,
                     template: flows.value[activeFlow.value]?.id,
-                });
+                };
 
                 return wait();
             },
@@ -339,7 +346,7 @@
             highlightElement: "#topologyWrapper",
             params: {...STEP_OPTIONS, placement: "left"},
             before: () => {
-                store.commit("editor/changeView", editorViewTypes.SOURCE_TOPOLOGY);
+                // editorStore.changeView(editorViewTypes.SOURCE_TOPOLOGY)
             }
         },
         {
@@ -410,7 +417,10 @@
         updateStatus();
         dispatchEvent(current, "skip");
 
-        store.commit("core/setGuidedProperties", {tourStarted: false});
+        coreStore.guidedProperties = {
+            ...coreStore.guidedProperties,
+            tourStarted: false,
+        };
 
         TOURS[TOUR_NAME].stop();
         router.push({name: "flows/create"});
@@ -422,7 +432,10 @@
         dispatchEvent(current, "finish");
         dispatchEvent(current, "executed");
 
-        store.commit("core/setGuidedProperties", {tourStarted: false});
+        coreStore.guidedProperties = {
+            ...coreStore.guidedProperties,
+            tourStarted: false,
+        };
 
         TOURS[TOUR_NAME].finish();
 
@@ -435,7 +448,7 @@
     };
 
     onMounted(() => {
-        store.dispatch("core/readTutorialFlows");
+        coreStore.readTutorialFlows();
     });
 </script>
 

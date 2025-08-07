@@ -1,13 +1,13 @@
 <template>
-    <Splitpanes class="default-theme" @resize="onResize">
+    <Splitpanes class="default-theme" v-bind="$attrs" @resize="onResize">
         <Pane
             v-for="(panel, panelIndex) in panels"
             min-size="10"
             :key="panelIndex"
             :size="panel.size"
-            @dragover.prevent="(e) => panelDragOver(e, panelIndex)"
+            @dragover.prevent="(e:DragEvent) => panelDragOver(e, panelIndex)"
             @dragleave.prevent="panelDragLeave"
-            @drop.prevent="(e) => panelDrop(e, panelIndex)"
+            @drop.prevent="(e:DragEvent) => panelDrop(e, panelIndex)"
             :class="{'panel-dragover': panel.dragover}"
         >
             <div class="editor-tabs-container">
@@ -46,7 +46,8 @@
                             }"
                             @dragleave.prevent
                             :data-tab-id="tab.value"
-                            @click="panel.activeTab = tab"
+                            @click="handleTabClick(panel, tab)"
+                            @mouseup="middleMouseClose($event, panelIndex, tab)"
                         >
                             <component :is="tab.button.icon" class="tab-icon" />
                             {{ tab.button.label }}
@@ -102,6 +103,15 @@
                                         {{ t("multi_panel_editor.close_all_tabs") }}
                                     </span>
                                 </el-dropdown-item>
+                                <el-dropdown-item
+                                    v-if="panel.activeTab?.value === 'code'"
+                                    :icon="Keyboard"
+                                    @click="showKeyShortcuts()"
+                                >
+                                    <span class="small-text">
+                                        {{ t("editor_shortcuts.label") }}
+                                    </span>
+                                </el-dropdown-item>
                             </el-dropdown-menu>
                         </template>
                     </el-dropdown>
@@ -131,16 +141,40 @@
             </div>
         </Pane>
     </Splitpanes>
+
+    <div
+        v-if="showDropZones"
+        class="absolute-drop-zones-container"
+    >
+        <div
+            class="new-panel-drop-zone left-drop-zone"
+            :class="{'panel-dragover': leftPanelDragover}"
+            @dragover.prevent="leftPanelDragOver"
+            @dragleave.prevent="leftPanelDragLeave"
+            @drop.prevent="(e) => newPanelDrop(e, 'left')"
+        />
+
+        <div
+            class="new-panel-drop-zone right-drop-zone"
+            :class="{'panel-dragover': rightPanelDragover}"
+            @dragover.prevent="rightPanelDragOver"
+            @dragleave.prevent="rightPanelDragLeave"
+            @drop.prevent="(e) => newPanelDrop(e, 'right')"
+        />
+    </div>
 </template>
 
 <script lang="ts" setup>
-    import {nextTick, ref, watch, provide} from "vue";
+    import {nextTick, ref, watch, provide, computed} from "vue";
     import {useI18n} from "vue-i18n";
 
     import "splitpanes/dist/splitpanes.css"
     import {Splitpanes, Pane} from "splitpanes"
 
     import {VISIBLE_PANELS_INJECTION_KEY} from "./code/injectionKeys";
+    import {CODE_PREFIX} from "./flows/useCodePanels";
+    import {useKeyShortcuts} from "../utils/useKeyShortcuts";
+
 
     import CloseIcon from "vue-material-design-icons/Close.vue"
     import CircleMediumIcon from "vue-material-design-icons/CircleMedium.vue"
@@ -149,8 +183,11 @@
     import DockLeft from "vue-material-design-icons/DockLeft.vue";
     import DockRight from "vue-material-design-icons/DockRight.vue";
     import Close from "vue-material-design-icons/Close.vue";
+    import Keyboard from "vue-material-design-icons/Keyboard.vue";
+    import {useEditorStore} from "../stores/editor";
 
-    const {t} = useI18n({useScope: "global"});
+    const {t} = useI18n();
+    const {showKeyShortcuts} = useKeyShortcuts();
 
     function throttle(callback: () => void, limit: number): () => void {
         let waiting = false;
@@ -206,6 +243,32 @@
     const dragging = ref(false);
     const tabContainerRefs = ref<HTMLDivElement[]>([]);
     const draggingPanel = ref<number | null>(null);
+    const realDragging = ref(false);
+    const leftPanelDragover = ref(false);
+    const rightPanelDragover = ref(false);
+
+    const editorStore = useEditorStore()
+
+    const handleTabClick = (panel: Panel, tab: Tab) => {
+        panel.activeTab = tab
+
+        if(tab.value.startsWith(CODE_PREFIX)){
+            editorStore.current = {
+                dirty: tab.dirty ?? false,
+                extension: tab.value.split(".").pop(),
+                flow: tab.value === CODE_PREFIX,
+                name: tab.value,
+                path: tab.value,
+                persistent: tab.value === CODE_PREFIX,
+            }
+        }
+    };
+
+    const showDropZones = computed(() =>
+        realDragging.value &&
+        movedTabInfo.value &&
+        !draggingPanel.value
+    );
 
     function onResize(e: {size:number}[]) {
         let i = 0;
@@ -222,7 +285,10 @@
 
     function cleanUp(){
         dragging.value = false;
+        realDragging.value = false;
         mouseXRef.value = -1;
+        leftPanelDragover.value = false;
+        rightPanelDragover.value = false;
         nextTick(() => {
             movedTabInfo.value = null
             for(const panel of panels.value) {
@@ -244,6 +310,12 @@
     }
 
     function dragover(e: DragEvent) {
+        // Ensure we set the realDragging flag when a drag operation is in progress
+        if (movedTabInfo.value) {
+            realDragging.value = true;
+            dragging.value = true;
+        }
+
         // if mouse has not moved vertically, stop the processing
         // this will be triggered every few ms so perf and readability will be paramount
         if(mouseXRef.value === e.clientX){
@@ -381,6 +453,49 @@
         }
     }
 
+    function newPanelDrop(e: DragEvent, direction: "left" | "right") {
+        if (!movedTabInfo.value) return;
+
+        const {tab: movedTab} = movedTabInfo.value;
+
+        // Create a new panel with the dragged tab
+        const newPanel = {
+            tabs: [movedTab],
+            activeTab: movedTab
+        };
+
+        // Add the new panel based on the drop direction, not relative to original panel
+        if (direction === "left") {
+            panels.value.splice(0, 0, newPanel);
+        } else {
+            panels.value.push(newPanel);
+        }
+
+        // Remove the tab from the original panel
+        // After adding the new panel, the original panel's index may have changed
+        // Find it again by looking for the tab in all panels
+        for (let i = 0; i < panels.value.length; i++) {
+            const panel = panels.value[i];
+            const tabIndex = panel.tabs.findIndex(t => t.value === movedTab.value);
+
+            if (i === 0 && direction === "left") continue;
+            if (i === panels.value.length - 1 && direction === "right") continue;
+
+            if (tabIndex !== -1) {
+                panel.tabs.splice(tabIndex, 1);
+
+                if (panel.activeTab.value === movedTab.value && panel.tabs.length > 0) {
+                    panel.activeTab = tabIndex > 0
+                        ? panel.tabs[tabIndex - 1]
+                        : panel.tabs[0];
+                }
+                break;
+            }
+        }
+
+        cleanUp();
+    }
+
     function closeAllTabs(panelIndex: number){
         panels.value[panelIndex].tabs = [];
     }
@@ -462,6 +577,36 @@
         const [movedPanel] = panelsCopy.splice(panelIndex, 1);
         panelsCopy.splice(newIndex, 0, movedPanel);
         panels.value = panelsCopy;
+    }
+
+    function rightPanelDragOver() {
+        if (!movedTabInfo.value) return;
+        rightPanelDragover.value = true;
+        leftPanelDragover.value = false;
+        removeAllPotentialTabs();
+    }
+
+    function rightPanelDragLeave() {
+        rightPanelDragover.value = false;
+    }
+
+    function leftPanelDragOver() {
+        if (!movedTabInfo.value) return;
+        leftPanelDragover.value = true;
+        rightPanelDragover.value = false;
+        removeAllPotentialTabs();
+    }
+
+    function leftPanelDragLeave() {
+        leftPanelDragover.value = false;
+    }
+
+    function middleMouseClose(event:MouseEvent, panelIndex:number, tab: Tab) {
+        // Middle mouse button
+        if (event.button === 1) {
+            event.preventDefault();
+            destroyTab(panelIndex, tab);
+        }
     }
 </script>
 
@@ -619,5 +764,47 @@
         background-color: var(--ks-background-card-hover);
         transition: background-color 0.2s ease;
     }
+
+    .absolute-drop-zones-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        pointer-events: none;
+        z-index: 100;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .new-panel-drop-zone {
+        position: relative;
+        width: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: rgba(30, 30, 30, 0.5);
+        transition: all 0.2s ease;
+        border: 2px dashed var(--ks-border-primary, #444);
+        border-radius: 4px;
+        margin: 8px;
+        pointer-events: auto;
+        height: calc(100% - 16px);
+    }
+
+    .new-panel-drop-zone:hover,
+    .new-panel-drop-zone.panel-dragover {
+        background-color: rgba(40, 40, 40, 0.8);
+        border-color: var(--ks-border-active, #888);
+    }
+
+    .left-drop-zone {
+        border-right-width: 2px;
+    }
+
+    .right-drop-zone {
+        border-left-width: 2px;
+    }
+
 
 </style>

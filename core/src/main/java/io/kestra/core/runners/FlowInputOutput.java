@@ -17,6 +17,7 @@ import io.kestra.core.models.flows.Type;
 import io.kestra.core.models.flows.input.FileInput;
 import io.kestra.core.models.flows.input.InputAndValue;
 import io.kestra.core.models.flows.input.ItemTypeInterface;
+import io.kestra.core.models.property.URIFetcher;
 import io.kestra.core.models.tasks.common.EncryptedString;
 import io.kestra.core.models.validations.ManualConstraintViolation;
 import io.kestra.core.serializers.JacksonMapper;
@@ -137,19 +138,30 @@ public class FlowInputOutput {
             .publishOn(Schedulers.boundedElastic())
             .<AbstractMap.SimpleEntry<String, String>>handle((input, sink) -> {
                 if (input instanceof CompletedFileUpload fileUpload) {
+                    boolean oldStyleInput = false;
+                    if ("files".equals(fileUpload.getName())) {
+                        // we are maybe in an old-style usage of the input, let's check if there is an input named after the filename
+                        oldStyleInput = inputs.stream().anyMatch(i -> i.getId().equals(fileUpload.getFilename()));
+                    }
+                    if (oldStyleInput) {
+                        var runContext = runContextFactory.of(null, execution);
+                        runContext.logger().warn("Using a deprecated way to upload a FILE input. You must set the input 'id' as part name and set the name of the file using the regular 'filename' part attribute.");
+                    }
+                    String inputId = oldStyleInput ? fileUpload.getFilename() : fileUpload.getName();
+                    String fileName = oldStyleInput ? FileInput.findFileInputExtension(inputs, fileUpload.getFilename()) : fileUpload.getFilename();
+
                     if (!uploadFiles) {
-                        final String fileExtension = FileInput.findFileInputExtension(inputs, fileUpload.getFilename());
                         URI from = URI.create("kestra://" + StorageContext
-                            .forInput(execution, fileUpload.getFilename(), fileUpload.getFilename() + fileExtension)
+                            .forInput(execution, inputId, fileName)
                             .getContextStorageURI()
                         );
                         fileUpload.discard();
-                        sink.next(new AbstractMap.SimpleEntry<>(fileUpload.getFilename(), from.toString()));
+                        sink.next(new AbstractMap.SimpleEntry<>(inputId, from.toString()));
                     } else {
                         try {
-                            final String fileExtension = FileInput.findFileInputExtension(inputs, fileUpload.getFilename());
+                            final String fileExtension = FileInput.findFileInputExtension(inputs, fileName);
 
-                            String prefix = StringUtils.leftPad(fileUpload.getFilename() + "_", 3, "_");
+                            String prefix = StringUtils.leftPad(fileName + "_", 3, "_");
                             File tempFile = File.createTempFile(prefix, fileExtension);
                             try (var inputStream = fileUpload.getInputStream();
                                  var outputStream = new FileOutputStream(tempFile)) {
@@ -158,8 +170,8 @@ public class FlowInputOutput {
                                     sink.error(new KestraRuntimeException("Can't upload file: " + fileUpload.getFilename()));
                                     return;
                                 }
-                                URI from = storageInterface.from(execution, fileUpload.getFilename(), tempFile);
-                                sink.next(new AbstractMap.SimpleEntry<>(fileUpload.getFilename(), from.toString()));
+                                URI from = storageInterface.from(execution, inputId, fileName, tempFile);
+                                sink.next(new AbstractMap.SimpleEntry<>(inputId, from.toString()));
                             } finally {
                                 if (!tempFile.delete()) {
                                     tempFile.deleteOnExit();
@@ -425,10 +437,10 @@ public class FlowInputOutput {
                 case FILE -> {
                     URI uri = URI.create(current.toString().replace(File.separator, "/"));
 
-                    if (uri.getScheme() != null && uri.getScheme().equals("kestra")) {
+                    if (URIFetcher.supports(uri)) {
                         yield uri;
                     } else {
-                        yield storageInterface.from(execution, id, new File(current.toString()));
+                        yield storageInterface.from(execution, id, current.toString().substring(current.toString().lastIndexOf("/") + 1), new File(current.toString()));
                     }
                 }
                 case JSON -> JacksonMapper.toObject(current.toString());

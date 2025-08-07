@@ -1,15 +1,20 @@
 import {canSaveFlowTemplate, saveFlowTemplate} from "../utils/flowTemplate";
-import {mapGetters, mapState} from "vuex";
+import {mapState} from "vuex";
 
 import ContentSave from "vue-material-design-icons/ContentSave.vue";
 import Delete from "vue-material-design-icons/Delete.vue";
 import Editor from "../components/inputs/Editor.vue";
 import RouteContext from "./routeContext";
-import {YamlUtils as YAML_UTILS} from "@kestra-io/ui-libs";
+import * as YAML_UTILS from "@kestra-io/ui-libs/flow-yaml-utils";
 import action from "../models/action";
 import permission from "../models/permission";
 import {pageFromRoute} from "../utils/eventsRouter";
 import {apiUrl} from "override/utils/route";
+import {mapStores} from "pinia";
+import {useApiStore} from "../stores/api";
+import {usePluginsStore} from "../stores/plugins";
+import {useCoreStore} from "../stores/core";
+import {useTemplateStore} from "../stores/template";
 
 export default {
     mixins: [RouteContext],
@@ -29,11 +34,11 @@ export default {
     },
     computed: {
         ...mapState("auth", ["user"]),
-        ...mapGetters("flow", ["flow"]),
-        ...mapGetters("template", ["template"]),
-        ...mapGetters("core", ["isUnsaved"]),
-        ...mapState("core", ["guidedProperties"]),
-        ...mapState("plugin", ["pluginSingleList","pluginsDocumentation"]),
+        ...mapState("flow", ["flow"]),
+        ...mapStores(useApiStore, usePluginsStore, useCoreStore, useTemplateStore),
+        guidedProperties() {
+            return this.coreStore.guidedProperties;
+        },
         isEdit() {
             return (
                 this.$route.name === `${this.dataType}s/update` &&
@@ -103,7 +108,7 @@ export default {
             }
 
             if (this.dataType === "template") {
-                this.content = YAML_UTILS.stringify(this.template);
+                this.content = YAML_UTILS.stringify(this.templateStore.template);
                 this.previousContent = this.content;
             } else {
                 if (this.flow) {
@@ -162,8 +167,12 @@ export default {
                     .then(message => {
                         this.$toast()
                             .confirm(message, () => {
-                                return this.$store
-                                    .dispatch(`${this.dataType}/delete${this.dataType.capitalize()}`, item)
+                                // TODO: When flow store is migrated to Pinia, this will be simplified:
+                                const deletePromise = this.dataType === "template" 
+                                    ? this.templateStore.deleteTemplate(item)
+                                    : this.$store.dispatch(`${this.dataType}/delete${this.dataType.capitalize()}`, item);
+                                
+                                return deletePromise
                                     .then(() => {
                                         this.content = ""
                                         this.previousContent = ""
@@ -183,7 +192,7 @@ export default {
         },
         save() {
             if (this.$tours["guidedTour"]?.isRunning?.value && !this.guidedProperties.saveFlow) {
-                this.$store.dispatch("api/events", {
+                this.apiStore.events({
                     type: "ONBOARDING",
                     onboarding: {
                         step: this.$tours["guidedTour"]?.currentStep?._value,
@@ -239,8 +248,12 @@ export default {
                     return;
                 }
                 this.previousContent = YAML_UTILS.stringify(this.item);
-                this.$store
-                    .dispatch(`${this.dataType}/create${this.dataType.capitalize()}`, {[this.dataType]: this.content})
+                // TODO: When flow store is migrated to Pinia, this will be simplified:
+                const createPromise = this.dataType === "template" 
+                    ? this.templateStore.createTemplate({template: this.content})
+                    : this.$store.dispatch(`${this.dataType}/create${this.dataType.capitalize()}`, {[this.dataType]: this.content});
+                
+                createPromise
                     .then((data) => {
                         this.previousContent = data.source ? data.source : YAML_UTILS.stringify(data);
                         this.content = data.source ? data.source : YAML_UTILS.stringify(data);
@@ -261,18 +274,9 @@ export default {
             }
         },
         updatePluginDocumentation(event) {
-            const taskType = YAML_UTILS.getTaskType(event.model.getValue(), event.position, this.pluginSingleList)
-            if (taskType) {
-                const taskElement = YAML_UTILS.localizeElementAtIndex(event.model.getValue(), event.position);
-                const version = taskElement?.parents?.[taskElement.parents.length - 1]?.version;
-                
-                this.$store.dispatch("plugin/load", {cls: taskType, version})
-                    .then(plugin => {
-                        this.$store.commit("plugin/setEditorPlugin", {cls: taskType, ...plugin});
-                    });
-            } else {
-                this.$store.commit("plugin/setEditorPlugin", undefined);
-            }
+            const elementWrapper = YAML_UTILS.localizeElementAtIndex(event.model.getValue(), event.model.getOffsetAt(event.position));
+            let element = elementWrapper?.value?.type !== undefined ? elementWrapper.value : elementWrapper?.parents?.findLast(p => p.type !== undefined);
+            this.pluginsStore.updateDocumentation(element);
         },
-    }
+    },
 };

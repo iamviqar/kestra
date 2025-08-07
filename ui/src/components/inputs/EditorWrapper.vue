@@ -1,8 +1,8 @@
 <template>
-    <editor
+    <Editor
         id="editorWrapper"
-        ref="editorDomElement"
-        :model-value="source"
+        ref="editorRefElement"
+        :model-value="draftSource === undefined ? source : draftSource"
         :schema-type="isCurrentTabFlow ? 'flow': undefined"
         :lang="extension === undefined ? 'yaml' : undefined"
         :extension="extension"
@@ -10,74 +10,120 @@
         :read-only="isReadOnly"
         :creating="isCreating"
         :path="props.path"
+        :diff-overview-bar="false"
         @update:model-value="editorUpdate"
         @cursor="updatePluginDocumentation"
         @save="isCurrentTabFlow ? save(): saveFileContent()"
         @execute="execute"
+        @mouse-move="(e) => highlightHoveredTask(e.target?.position?.lineNumber)"
+        @mouse-leave="() => highlightHoveredTask(-1)"
+        :original="draftSource === undefined ? undefined : source"
+        :diff-side-by-side="false"
     >
         <template #absolute>
-            <KeyShortcuts v-if="isCurrentTabFlow" />
-            <ContentSave v-else @click="saveFileContent" />
+            <AITriggerButton
+                :show="isCurrentTabFlow"
+                :enabled="aiEnabled"
+                :opened="aiAgentOpened"
+                @click="draftSource = undefined; aiAgentOpened = true"
+            />
+            <ContentSave v-if="!isCurrentTabFlow" @click="saveFileContent" />
         </template>
-    </editor>
+        <template v-if="playgroundStore.enabled" #widget-content>
+            <PlaygroundRunTaskButton :task-id="highlightedLines?.taskId" />
+        </template>
+    </Editor>
+    <Transition name="el-zoom-in-center">
+        <AiAgent
+            v-if="aiAgentOpened"
+            class="position-absolute prompt"
+            @close="aiAgentOpened = false"
+            :flow="flowContent"
+            @generated-yaml="(yaml: string) => {draftSource = yaml; aiAgentOpened = false}"
+        />
+    </Transition>
+    <AcceptDecline
+        v-if="draftSource !== undefined"
+        class="position-absolute actions"
+        @accept="acceptDraft"
+        @reject="declineDraft"
+    />
 </template>
 
 <script lang="ts" setup>
     import {computed, onActivated, onMounted, ref, provide, onBeforeUnmount} from "vue";
-    import {useStore} from "vuex";
-    import Editor from "./Editor.vue";
-    import KeyShortcuts from "./KeyShortcuts.vue";
-
-    import ContentSave from "vue-material-design-icons/ContentSave.vue";
-
     import {useRoute, useRouter} from "vue-router";
-    const route = useRoute()
-    const router = useRouter()
+    import {useStore} from "vuex";
 
-    import {EDITOR_CURSOR_INJECTION_KEY} from "../code/injectionKeys";
+    import {EDITOR_CURSOR_INJECTION_KEY, EDITOR_WRAPPER_INJECTION_KEY} from "../code/injectionKeys";
+    import {usePluginsStore} from "../../stores/plugins";
+    import {useMiscStore} from "../../stores/misc";
+    import {EditorTabProps, useEditorStore} from "../../stores/editor";
+    import {useNamespacesStore} from "override/stores/namespaces";
+    import useFlowEditorRunTaskButton from "../../composables/playground/useFlowEditorRunTaskButton";
+
+    import * as YAML_UTILS from "@kestra-io/ui-libs/flow-yaml-utils";
+
+    import Editor from "./Editor.vue";
+    import ContentSave from "vue-material-design-icons/ContentSave.vue";
+    import AiAgent from "../ai/AiAgent.vue";
+    import AITriggerButton from "../ai/AITriggerButton.vue";
+    import AcceptDecline from "./AcceptDecline.vue";
+    import PlaygroundRunTaskButton from "./PlaygroundRunTaskButton.vue";
+
+    const route = useRoute();
+    const router = useRouter();
 
     const store = useStore();
+    const miscStore = useMiscStore();
+    const editorStore = useEditorStore();
+
+    const aiEnabled = computed(() => miscStore.configs?.isAiEnabled);
     const cursor = ref();
+
+    const toggleAiShortcut = (event: KeyboardEvent) => {
+        if (event.code === "KeyK" && (event.ctrlKey || event.metaKey) && event.altKey && event.shiftKey && isCurrentTabFlow.value && aiEnabled.value) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            draftSource.value = undefined;
+            aiAgentOpened.value = !aiAgentOpened.value;
+        }
+    };
+    const aiAgentOpened = ref(false);
+    const draftSource = ref<string | undefined>(undefined);
+
     provide(EDITOR_CURSOR_INJECTION_KEY, cursor);
-
-
-    export interface EditorTabProps{
-        name: string,
-        path: string,
-        extension?: string,
-        flow?: boolean,
-        dirty?: boolean,
-    }
 
     const props = withDefaults(defineProps<EditorTabProps>(), {
         extension: undefined,
         dirty: false,
-        flow: true
+        flow: true,
     });
 
-    const source = computed(() => {
+    provide(EDITOR_WRAPPER_INJECTION_KEY, props.flow);
+
+    const source = computed<string>(() => {
         return props.flow
-            ? store.getters["flow/flowYaml"]
-            : store.state.editor.tabs.find((t:any) => t.path === props.path)?.content;
+            ? store.state.flow.flowYaml
+            : editorStore.tabs.find((t: any) => t.path === props.path)?.content;
     })
 
-    async function loadFile(){
-        if(props.dirty || props.flow){
-            return;
-        }
-        const content = await store.dispatch("namespace/readFile", {
-            namespace: namespace.value,
-            path: props.path
-        })
-        store.commit("editor/setTabContent", {
-            path: props.path,
-            content
-        })
+    async function loadFile() {
+        if (props.dirty || props.flow) return;
+
+        const fileNamespace = namespace.value ?? route.params?.namespace;
+
+        if (!fileNamespace) return;
+
+        const content = await namespacesStore.readFile({namespace: fileNamespace, path: props.path})
+        editorStore.setTabContent({path: props.path, content})
     }
 
     onMounted(() => {
         loadFile();
         window.addEventListener("keydown", handleGlobalSave);
+        window.addEventListener("keydown", toggleAiShortcut);
     });
 
     onActivated(() => {
@@ -86,30 +132,43 @@
 
     onBeforeUnmount(() => {
         window.removeEventListener("keydown", handleGlobalSave);
+        window.removeEventListener("keydown", toggleAiShortcut);
+        pluginsStore.editorPlugin = undefined;
     });
 
-    const editorDomElement = ref<any>(null);
+    const editorRefElement = ref<InstanceType<typeof Editor>>();
 
-    const namespace = computed(() => store.getters["flow/namespace"]);
-    const flowStore = computed(() => store.getters["flow/flow"]);
+    const namespace = computed(() => store.state.flow.namespace);
+    const flowStore = computed(() => store.state.flow.flow);
     const isCreating = computed(() => store.state.flow.isCreating);
     const isCurrentTabFlow = computed(() => props.flow)
-    const isReadOnly = computed(() => flowStore.value?.deleted || !store.getters["flow/isAllowedEdit"] || store.getters["flow/readOnlySystemLabel"])
+    const isReadOnly = computed(() => flowStore.value?.deleted || !store.getters["flow/isAllowedEdit"] || store.getters["flow/readOnlySystemLabel"]);
 
     const timeout = ref<any>(null);
 
+    const flowContent = computed(() => {
+        return draftSource.value ?? source.value;
+    });
+
+    const pluginsStore = usePluginsStore();
+    const namespacesStore = useNamespacesStore();
+
     function editorUpdate(newValue: string){
-        if(store.state.editor.tabs.find((t:any) => t.path === props.path)?.content === newValue){
+        if (flowContent.value === newValue) {
             return;
         }
-        if(isCurrentTabFlow.value){
-            store.commit("flow/setFlowYaml", newValue);
+        if (isCurrentTabFlow.value) {
+            if (draftSource.value !== undefined) {
+                draftSource.value = newValue;
+            } else {
+                store.commit("flow/setFlowYaml", newValue);
+            }
         }
-        store.commit("editor/setTabContent", {
+        editorStore.setTabContent({
             content: newValue,
             path: props.path
         });
-        store.commit("editor/setTabDirty", {
+        editorStore.setTabDirty({
             path: props.path,
             dirty: true
         });
@@ -127,14 +186,25 @@
     }
 
 
-    function updatePluginDocumentation(event: string | undefined, task: any){
-        store.dispatch("plugin/updateDocumentation", {event,task});
+    function updatePluginDocumentation(event: any) {
+        const elementWrapper = YAML_UTILS.localizeElementAtIndex(event.model.getValue(), event.model.getOffsetAt(event.position));
+        let element = (elementWrapper?.value?.type !== undefined ? elementWrapper.value : elementWrapper?.parents?.findLast(p => p.type !== undefined)) as Parameters<typeof pluginsStore.updateDocumentation>[0];
+        pluginsStore.updateDocumentation(element);
     };
 
     const flowParsed = computed(() => store.getters["flow/flowParsed"]);
     const save = async () => {
-        const result = await store.dispatch("flow/save", {content: editorDomElement.value.$refs.monacoEditor.value})
-        if(result === "redirect_to_update"){
+        clearTimeout(timeout.value);
+        const editorRef = editorRefElement.value
+        if(!editorRef?.$refs.monacoEditor) return
+        const result = await store.dispatch("flow/save", {content:(editorRef.$refs.monacoEditor as any).value})
+
+        editorStore.setTabDirty({
+            path: props.path,
+            dirty: false
+        });
+
+        if (result === "redirect_to_update") {
             await router.push({
                 name: "flows/update",
                 params: {
@@ -147,13 +217,14 @@
         }
     };
 
-    const saveFileContent =  async ()=>{
-        await store.dispatch("namespace/createFile", {
+    const saveFileContent = async () => {
+        clearTimeout(timeout.value);
+        await namespacesStore.createFile({
             namespace: namespace.value,
             path: props.path,
-            content: editorDomElement.value.modelValue,
+            content: editorRefElement.value?.modelValue || "",
         });
-        store.commit("editor/setTabDirty", {
+        editorStore.setTabDirty({
             path: props.path,
             dirty: false
         });
@@ -173,4 +244,36 @@
     const execute = () => {
         store.commit("flow/executeFlow", true);
     };
+
+    function acceptDraft() {
+        const accepted = draftSource.value;
+        draftSource.value = undefined;
+        editorUpdate(accepted!);
+    }
+
+    function declineDraft() {
+        draftSource.value = undefined;
+        aiAgentOpened.value = true;
+    }
+
+    const {
+        playgroundStore,
+        highlightHoveredTask,
+        highlightedLines,
+    } = useFlowEditorRunTaskButton(isCurrentTabFlow, editorRefElement, source);
 </script>
+
+<style scoped lang="scss">
+.prompt {
+    bottom: 10%;
+    width: calc(100% - 5rem);
+    left: 3rem;
+    max-width: 700px;
+    background-color: var(--ks-background-panel);
+    box-shadow: 0px 4px 4px 0px var(--ks-card-shadow);
+}
+
+.actions {
+    bottom: 10%;
+}
+</style>

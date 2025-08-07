@@ -14,24 +14,22 @@
 </template>
 
 <script>
-    import {h} from "vue";
-
     import Topology from "./Topology.vue";
     import FlowRevisions from "./FlowRevisions.vue";
     import LogsWrapper from "../logs/LogsWrapper.vue"
     import FlowExecutions from "./FlowExecutions.vue";
     import RouteContext from "../../mixins/routeContext";
     import {mapState, mapGetters} from "vuex";
+    import {mapStores} from "pinia";
+    import {useCoreStore} from "../../stores/core";
     import permission from "../../models/permission";
     import action from "../../models/action";
     import Tabs from "../Tabs.vue";
     import Overview from "./Overview.vue";
-    import FlowDependencies from "./FlowDependencies.vue";
-    import Empty from "../layout/empty/Empty.vue";
+    import Dependencies from "../dependencies/Dependencies.vue";
     import FlowMetrics from "./FlowMetrics.vue";
     import FlowEditor from "./FlowEditor.vue";
     import FlowTriggers from "./FlowTriggers.vue";
-    import {apiUrl} from "override/utils/route";
     import FlowRootTopBar from "./FlowRootTopBar.vue";
     import FlowConcurrency from "./FlowConcurrency.vue";
     import DemoAuditLogs from "../demo/AuditLogs.vue";
@@ -56,14 +54,14 @@
                     this.load();
                 }
             },
-            guidedProperties: {
+            "coreStore.guidedProperties": {
                 deep: true,
                 immediate: true,
                 handler: function (newValue) {
                     if (newValue?.manuallyContinue) {
                         setTimeout(() => {
                             this.$tours["guidedTour"]?.nextStep();
-                            this.$store.commit("core/setGuidedProperties", {manuallyContinue: false});
+                            this.coreStore.guidedProperties = {...this.coreStore.guidedProperties, manuallyContinue: false};
                         }, 500);
                     }
                 },
@@ -97,29 +95,15 @@
                             ...this.$route.params,
                             ...query,
                         })
-                        .then(() => {
+                        .then(async () => {
                             if (this.flow) {
                                 this.deleted = this.flow.deleted;
                                 this.previousFlow = this.flowKey();
                                 this.$store.dispatch("flow/loadGraph", {
                                     flow: this.flow,
                                 });
-                                this.$http
-                                    .get(
-                                        `${apiUrl(this.$store)}/flows/${this.flow.namespace}/${this.flow.id}/dependencies`,
-                                    )
-                                    .then((response) => {
-                                        this.dependenciesCount =
-                                            response.data && response.data.nodes
-                                                ? [
-                                                    ...new Set(
-                                                        response.data.nodes.map(
-                                                            (r) => r.uid,
-                                                        ),
-                                                    ),
-                                                ].length
-                                                : 0;
-                                    });
+
+                                this.dependenciesCount = (await this.$store.dispatch("flow/loadDependencies", {namespace: this.$route.params.namespace, id: this.$route.params.id})).count;
                             }
                         });
                 }
@@ -271,9 +255,10 @@
                 ) {
                     tabs.push({
                         name: "dependencies",
-                        component: this.routeFlowDependencies,
+                        component: Dependencies,
                         title: this.$t("dependencies"),
                         count: this.dependenciesCount,
+                        maximized: true
                     });
                 }
 
@@ -304,10 +289,10 @@
             }
         },
         computed: {
-            ...mapGetters("flow", ["flow", "isAllowedEdit", "readOnlySystemLabel"]),
-            ...mapState("flow", ["expandedSubflows"]),
+            ...mapGetters("flow", ["isAllowedEdit", "readOnlySystemLabel"]),
+            ...mapState("flow", ["flow", "expandedSubflows"]),
             ...mapState("auth", ["user"]),
-            ...mapState("core", ["guidedProperties"]),
+            ...mapStores(useCoreStore),
             routeInfo() {
                 return {
                     title: this.$route.params.id,
@@ -321,11 +306,12 @@
                         {
                             label: this.$route.params.namespace,
                             link: {
-                                name: "flows/list",
-                                query: {
-                                    namespace: this.$route.params.namespace,
-                                },
-                            },
+                                name: "namespaces/update",
+                                params: {
+                                    id: this.$route.params.namespace,
+                                    tab: "flows"
+                                }
+                            }
                         },
                     ],
                     beta: this.tabs.find(tab => tab.name === this.$route.params.tab)?.props?.beta,
@@ -337,10 +323,6 @@
             ready() {
                 return this.user && this.flow;
             },
-            routeFlowDependencies() {
-                const EMPTY = () => h(Empty, {type: "dependencies"});
-                return this.dependenciesCount > 0 ? FlowDependencies : EMPTY;
-            }
         },
         unmounted() {
             this.$store.commit("flow/setFlow", undefined);

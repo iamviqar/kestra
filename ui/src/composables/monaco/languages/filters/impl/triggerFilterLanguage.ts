@@ -1,8 +1,14 @@
-import {Comparators, Completion, FilterKeyCompletions} from "../filterCompletion.ts";
+import {
+    Comparators,
+    Completion,
+    FilterKeyCompletions,
+    PICK_DATE_VALUE
+} from "../filterCompletion.ts";
 import {FilterLanguage} from "../filterLanguage.ts";
 import permission from "../../../../../models/permission.ts";
 import action from "../../../../../models/action.ts";
 import {Me} from "../../../../../stores/auth.ts";
+import {useNamespacesStore} from "override/stores/namespaces.ts";
 
 const triggerFilterKeys: Record<string, FilterKeyCompletions> = {
     namespace: new FilterKeyCompletions(
@@ -10,7 +16,8 @@ const triggerFilterKeys: Record<string, FilterKeyCompletions> = {
         async (store) => {
             const user = store.getters["auth/user"] as Me;
             if (user && user.hasAnyActionOnAnyNamespace(permission.NAMESPACE, action.READ)) {
-                return [...new Set(((await store.dispatch("namespace/loadNamespacesForDatatype", {dataType: "flow"})) as string[])
+                const namespacesStore = useNamespacesStore();
+                return [...new Set(((await namespacesStore.loadNamespacesForDatatype({dataType: "flow"})) as string[])
                     .flatMap(namespace => {
                         return namespace.split(".").reduce((current: string[], part: string) => {
                             const previousCombination = current?.[current.length - 1];
@@ -28,6 +35,40 @@ const triggerFilterKeys: Record<string, FilterKeyCompletions> = {
         undefined,
         true
     ),
+    timeRange: new FilterKeyCompletions(
+        [Comparators.EQUALS],
+        async (_, hardcodedValues) => hardcodedValues.RELATIVE_DATE,
+        false,
+        ["timeRange", "startDate", "endDate"]
+    ),
+    startDate: new FilterKeyCompletions(
+        [Comparators.GREATER_THAN_OR_EQUAL_TO, Comparators.GREATER_THAN, Comparators.LESS_THAN_OR_EQUAL_TO, Comparators.LESS_THAN, Comparators.EQUALS, Comparators.NOT_EQUALS],
+        async () => PICK_DATE_VALUE,
+        false,
+        ["timeRange"]
+    ),
+    endDate: new FilterKeyCompletions(
+        [Comparators.LESS_THAN_OR_EQUAL_TO, Comparators.LESS_THAN, Comparators.GREATER_THAN_OR_EQUAL_TO, Comparators.GREATER_THAN, Comparators.EQUALS, Comparators.NOT_EQUALS],
+        async () => PICK_DATE_VALUE,
+        false,
+        ["timeRange"]
+    ),
+    scope: new FilterKeyCompletions(
+        [Comparators.EQUALS, Comparators.NOT_EQUALS],
+        async (_, hardcodedValues) => hardcodedValues.SCOPES,
+        undefined,
+        ["scope"]
+    ),
+    triggerId: new FilterKeyCompletions(
+        [Comparators.EQUALS, Comparators.NOT_EQUALS, Comparators.CONTAINS, Comparators.STARTS_WITH, Comparators.ENDS_WITH],
+        undefined,
+        true
+    ),
+    workerId: new FilterKeyCompletions(
+        [Comparators.EQUALS, Comparators.NOT_EQUALS, Comparators.CONTAINS, Comparators.STARTS_WITH, Comparators.ENDS_WITH],
+        undefined,
+        true
+    )
 }
 
 class TriggerFilterLanguage extends FilterLanguage {

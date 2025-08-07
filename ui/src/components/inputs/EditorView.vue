@@ -84,7 +84,7 @@
                 class="me-2"
             />
 
-            <switch-view
+            <SwitchView
                 v-if="!isNamespace"
                 :type="viewType"
                 class="to-topology-button"
@@ -133,29 +133,29 @@
             style="flex: 1;"
         >
             <template v-if="editorViewType === 'YAML'">
-                <editor
-                    class="position-relative"
-                    v-if="isCreating || openedTabs.length"
-                    ref="editorDomElement"
-                    @save="save"
-                    @execute="execute"
-                    :path="currentTab?.path"
-                    :model-value="flowYaml"
-                    :schema-type="isCurrentTabFlow? 'flow': undefined"
-                    :lang="currentTab?.extension === undefined ? 'yaml' : undefined"
-                    :extension="currentTab?.extension"
-                    @update:model-value="editorUpdate"
-                    @cursor="updatePluginDocumentation"
-                    :creating="isCreating"
-                    @restart-guided-tour="() => persistViewType(editorViewTypes.SOURCE)"
-                    @tab-loaded="onTabLoaded"
-                    :read-only="isReadOnly"
-                    :navbar="false"
-                >
-                    <template #absolute>
-                        <KeyShortcuts />
-                    </template>
-                </editor>
+                <template v-if="isCreating || openedTabs.length">
+                    <Editor
+                        class="position-relative"
+                        ref="editorDomElement"
+                        @save="save"
+                        @execute="execute"
+                        :path="currentTab?.path"
+                        :diff-overview-bar="false"
+                        :model-value="flowYaml"
+                        :schema-type="isCurrentTabFlow? 'flow': undefined"
+                        :lang="currentTab?.extension === undefined ? 'yaml' : undefined"
+                        :extension="currentTab?.extension"
+                        @update:model-value="editorUpdate"
+                        @cursor="updatePluginDocumentation"
+                        :creating="isCreating"
+                        @restart-guided-tour="() => persistViewType(editorViewTypes.SOURCE)"
+                        @tab-loaded="onTabLoaded"
+                        :read-only="isReadOnly"
+                        :navbar="false"
+                        :original="flowYaml"
+                        :diff-side-by-side="false"
+                    />
+                </template>
                 <div v-else class="no-tabs-opened">
                     <div class="img mb-1" />
 
@@ -243,7 +243,6 @@
                 @update-metadata="(e) => onUpdateMetadata(e, true)"
                 @update-task="(e) => editorUpdate(e)"
                 @reorder="(yaml) => handleReorder(yaml)"
-                @update-documentation="(task) => updatePluginDocumentation(undefined, task)"
             />
         </div>
         <div class="slider" @mousedown.prevent.stop="dragEditor" v-if="combinedEditor" />
@@ -293,7 +292,7 @@
             />
         </div>
 
-        <drawer
+        <Drawer
             v-model="isNewErrorOpen"
             title="Add a global error handler"
         >
@@ -314,8 +313,8 @@
                     {{ $t("save") }}
                 </el-button>
             </template>
-        </drawer>
-        <drawer
+        </Drawer>
+        <Drawer
             v-model="isNewTriggerOpen"
             title="Add a trigger"
         >
@@ -336,8 +335,8 @@
                     {{ $t("save") }}
                 </el-button>
             </template>
-        </drawer>
-        <drawer
+        </Drawer>
+        <Drawer
             v-if="isEditMetadataOpen"
             v-model="isEditMetadataOpen"
         >
@@ -363,7 +362,7 @@
                     {{ $t("save") }}
                 </el-button>
             </template>
-        </drawer>
+        </Drawer>
     </div>
     <el-dialog
         v-if="confirmOutdatedSaveDialog"
@@ -440,12 +439,24 @@
 </template>
 
 <script setup>
-    import {computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref, watch,} from "vue";
-    import {useStore} from "vuex";
+    import {computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref, watch} from "vue";
     import {useRoute, useRouter} from "vue-router";
+    import {useStore} from "vuex";
     import {useStorage} from "@vueuse/core";
+    import * as FLOW_YAML_UTILS from "@kestra-io/ui-libs/flow-yaml-utils";
+    import {Utils, YamlUtils as YAML_UTILS, SECTIONS} from "@kestra-io/ui-libs";
 
-    // Icons
+    import {useCoreStore} from "../../stores/core";
+    import {useNamespacesStore} from "override/stores/namespaces";
+    import {usePluginsStore} from "../../stores/plugins";
+    import {useEditorStore} from "../../stores/editor";
+
+    import {useFlowOutdatedErrors} from "./flowOutdatedErrors";
+
+    import permission from "../../models/permission";
+    import action from "../../models/action";
+    import {storageKeys, editorViewTypes} from "../../utils/constants";
+
     import ContentSave from "vue-material-design-icons/ContentSave.vue";
     import MenuOpen from "vue-material-design-icons/MenuOpen.vue";
     import MenuClose from "vue-material-design-icons/MenuClose.vue";
@@ -460,14 +471,6 @@
 
     import TypeIcon from "../utils/icons/Type.vue"
     import SwitchView from "./SwitchView.vue";
-    import KeyShortcuts from "./KeyShortcuts.vue";
-
-    import permission from "../../models/permission";
-    import action from "../../models/action";
-    import {storageKeys, editorViewTypes} from "../../utils/constants";
-    import {Utils, YamlUtils as YAML_UTILS, SECTIONS} from "@kestra-io/ui-libs";
-
-    // editor components
     import Editor from "./Editor.vue";
     import NoCode from "../code/NoCode.vue";
     import Blueprints from "override/components/flows/blueprints/Blueprints.vue";
@@ -478,9 +481,10 @@
     import ValidationError from "../flows/ValidationError.vue";
     import EditorButtons from "./EditorButtons.vue";
     import MetadataEditor from "../flows/MetadataEditor.vue";
-    import {useFlowOutdatedErrors} from "./flowOutdatedErrors";
 
     const store = useStore();
+    const coreStore = useCoreStore();
+    const namespacesStore = useNamespacesStore();
     const router = useRouter();
     const route = useRoute();
     const emit = defineEmits(["follow", "expand-subflow"]);
@@ -554,7 +558,7 @@
     });
 
     store.commit("flow/setIsCreating", props.isCreating);
-    const guidedProperties = ref(store.getters["core/guidedProperties"]);
+    const guidedProperties = ref(coreStore.guidedProperties);
 
     const isCurrentTabFlow = computed(() => currentTab?.value?.extension === undefined)
     const isFlow = computed(() => currentTab?.value?.flow || props.isCreating);
@@ -631,7 +635,7 @@
     const editorWidth = useStorage("editor-size", 50);
     const validationDomElement = ref(null);
     const isLoading = ref(false);
-    const flowYaml = computed(() => store.getters["flow/flowYaml"]);
+    const flowYaml = computed(() => store.state.flow.flowYaml);
     const flowYamlOrigin = computed(() => store.state.flow.flowYamlOrigin);
     const user = computed(() => store.getters["auth/user"]);
     const metadata = computed(() => store.state.flow.metadata);
@@ -648,7 +652,9 @@
     const blueprintsLoaded = ref(false);
     const confirmOutdatedSaveDialog = ref(false);
 
-    const onboarding = computed(() => store.state.editor.onboarding);
+    const editorStore = useEditorStore();
+
+    const onboarding = computed(() => editorStore.onboarding);
     watch(onboarding, (started) => {
         if(!started) return;
 
@@ -657,16 +663,16 @@
     });
 
     const toggleExplorer = ref(null);
-    const explorerVisible = computed(() => store.state.editor.explorerVisible);
+    const explorerVisible = computed(() => editorStore.explorerVisible);
     const toggleExplorerVisibility = () => {
         toggleExplorer.value.hide();
-        store.commit("editor/toggleExplorerVisibility");
+        editorStore.toggleExplorerVisibility();
     };
-    const currentTab = computed(() => store.state.editor.current);
-    const openedTabs = computed(() => store.state.editor.tabs);
+    const currentTab = computed(() => editorStore.current);
+    const openedTabs = computed(() => editorStore.tabs);
 
     const changeCurrentTab = (tab) => {
-        store.dispatch("editor/openTab", tab);
+        editorStore.openTab(tab);
     };
 
     const persistViewType = (value) => {
@@ -675,7 +681,7 @@
     };
 
     const taskErrors = computed(() => {
-        return store.getters["flow/taskError"]?.split(/, ?/);
+        return store.state.flow.taskError?.split(/, ?/);
     });
 
     watch(
@@ -695,6 +701,8 @@
         }
     };
 
+    const pluginsStore = usePluginsStore();
+
     onMounted(async () => {
         if(guidedProperties.value?.tourStarted) {
             editorViewType.value = "YAML";
@@ -707,9 +715,9 @@
             initViewType()
             await store.dispatch("flow/initYamlSource", {viewType: viewType.value});
         } else {
-            store.commit("editor/closeAllTabs");
+            editorStore.closeAllTabs();
             switchViewType(editorViewTypes.SOURCE, false)
-            store.commit("editor/toggleExplorerVisibility", true);
+            editorStore.toggleExplorerVisibility(true);
         }
 
         // Save on ctrl+s in topology
@@ -732,27 +740,30 @@
         window.addEventListener("resize", onResize);
 
         if (props.isCreating) {
-            store.commit("editor/closeTabs");
+            editorStore.closeTabs();
         }
     });
 
     onBeforeUnmount(() => {
         window.removeEventListener("resize", onResize);
 
-        store.commit("plugin/setEditorPlugin", undefined);
+        pluginsStore.editorPlugin = undefined;
         document.removeEventListener("keydown", saveUsingKeyboard);
         document.removeEventListener("popstate", () => {
             stopTour();
         });
 
-        store.commit("editor/closeAllTabs");
+        editorStore.closeAllTabs();
 
         document.removeEventListener("click", hideTabContextMenu);
     });
 
     const stopTour = () => {
         tours["guidedTour"].stop();
-        store.commit("core/setGuidedProperties", {tourStarted: false});
+        coreStore.guidedProperties = {
+            ...coreStore.guidedProperties,
+            tourStarted: false
+        };
     };
 
     const isAllowedEdit = computed(() => store.getters["flow/isAllowedEdit"]);
@@ -761,8 +772,10 @@
         emit(type, event);
     };
 
-    const updatePluginDocumentation = (event, task) => {
-        store.dispatch("plugin/updateDocumentation", {event,task});
+    const updatePluginDocumentation = (event) => {
+        const elementWrapper = FLOW_YAML_UTILS.localizeElementAtIndex(event.model.getValue(), event.model.getOffsetAt(event.position));
+        let element = elementWrapper.value.type !== undefined ? elementWrapper.value : elementWrapper.parents.findLast(p => p.type !== undefined);
+        pluginsStore.updateDocumentation(element);
     };
 
     const fetchGraph = () => {
@@ -783,7 +796,7 @@
     };
 
     const onEdit = (source, currentIsFlow = false) => {
-        store.commit("flow/setFlowYaml", source)
+        store.commit("flow/setFlowYaml", source);
         return store.dispatch("flow/onEdit", {
             source,
             currentIsFlow,
@@ -826,11 +839,11 @@
             newTrigger.value
         );
         if (existingTask) {
-            store.dispatch("core/showMessage", {
+            coreStore.message = {
                 variant: "error",
                 title: t("trigger_id_exists"),
                 message: t("trigger_id_message", {existingTrigger: existingTask}),
-            });
+            };
             return;
         }
         onEdit(YAML_UTILS.insertSection("triggers", source, newTrigger.value), true);
@@ -860,11 +873,11 @@
             newError.value
         );
         if (existingTask) {
-            store.dispatch("core/showMessage", {
+            coreStore.message = {
                 variant: "error",
                 title: t("task_id_exists"),
                 message: t("task_id_message", {existingTask}),
-            });
+            };
             return;
         }
         onEdit(YAML_UTILS.insertSection("errors", source, newError.value), true);
@@ -932,6 +945,7 @@
     const flowParsed = computed(() => store.getters["flow/flowParsed"]);
 
     const saveWithoutRevisionGuard = async () => {
+        clearTimeout(timer.value);
         const result = await store.dispatch("flow/saveWithoutRevisionGuard");
         if(result === "redirect_to_update"){
             await router.push({
@@ -954,6 +968,7 @@
     };
 
     const save = async () => {
+        clearTimeout(timer.value);
         const result = await store.dispatch("flow/save", {
             content: editorDomElement.value?.$refs.monacoEditor.value ?? flowYaml.value,
             namespace: props.namespace ?? route.params.namespace,
@@ -1087,14 +1102,14 @@
         event.preventDefault();
         const from = draggedTabIndex.value;
         if (from !== to) {
-            store.commit("editor/reorderTabs", {from, to});
+            editorStore.reorderTabs({from, to});
         }
         draggedTabIndex.value = null;
         dragOverTabIndex.value = null;
     };
 
     async function loadFileAtPath(path){
-        const content = await store.dispatch("namespace/readFile", {
+        const content = await namespacesStore.readFile({
             path,
             namespace: props.namespace ?? route.params.namespace ?? route.params.id,
         })
@@ -1162,17 +1177,17 @@
         document.removeEventListener("click", hideTabContextMenu);
     };
 
-    const FLOW_TAB = computed(() => store.state.editor?.tabs?.find(tab => tab.name === "Flow"))
+    const FLOW_TAB = computed(() => editorStore.tabs?.find(tab => tab.name === "Flow"))
 
     const closeTab = (tab, index) => {
-        store.dispatch("editor/closeTab", {...tab, index});
+        editorStore.closeTab({...tab, index});
     };
 
     const closeTabs = (tabsToClose, openTab) => {
         tabsToClose.forEach(tab => {
-            store.dispatch("editor/closeTab", tab);
+            editorStore.closeTab(tab);
         });
-        store.dispatch("editor/openTab", openTab);
+        editorStore.openTab(openTab);
         hideTabContextMenu();
     };
 
@@ -1201,7 +1216,7 @@
             name: undefined,
             folder: undefined
         };
-        store.commit("editor/toggleExplorerVisibility", true);
+        editorStore.toggleExplorerVisibility(true);
     };
     const createFolder = () => {
         dialog.value = {
@@ -1210,7 +1225,7 @@
             name: undefined,
             folder: undefined
         };
-        store.commit("editor/toggleExplorerVisibility", true);
+        editorStore.toggleExplorerVisibility(true);
     };
     const folders = computed(() => {
         function extractPaths(basePath = "", array) {
@@ -1229,7 +1244,7 @@
             });
             return paths;
         }
-        return extractPaths(undefined, store.state.editor.treeData);
+        return extractPaths(undefined, editorStore.treeData);
     });
     const dialogHandler = async () => {
         try {
@@ -1238,21 +1253,21 @@
                 : dialog.value.name;
 
             if (dialog.value.type === "file") {
-                await store.dispatch("namespace/createFile", {
+                await namespacesStore.createFile({
                     namespace: props.namespace ?? route.params.namespace,
                     path,
                     content: "",
                 });
             } else {
-                await store.dispatch("namespace/createDirectory", {
+                await namespacesStore.createDirectory({
                     namespace: props.namespace ?? route.params.namespace,
                     path,
                 });
             }
             dialog.value.visible = false;
-            store.commit("editor/refreshTree");
+            editorStore.refreshTree();
             if (dialog.value.type === "file") {
-                store.dispatch("editor/openTab", {
+                editorStore.openTab({
                     name: dialog.value.name,
                     path,
                     extension: dialog.value.name.split(".").pop()
@@ -1273,209 +1288,213 @@
             });
             const path = file.webkitRelativePath || file.name;
 
-            await store.dispatch("namespace/importFileDirectory", {
+            await namespacesStore.importFileDirectory({
                 namespace: props.namespace ?? route.params.namespace,
                 content,
                 path
             });
         }
-        store.commit("editor/refreshTree");
+        editorStore.refreshTree();
         event.target.value = "";
     };
 </script>
 
 <style lang="scss" scoped>
-    @use "element-plus/theme-chalk/src/mixins/mixins" as *;
-    @import "@kestra-io/ui-libs/src/scss/variables";
+@use "element-plus/theme-chalk/src/mixins/mixins" as *;
+@import "@kestra-io/ui-libs/src/scss/variables";
 
-    .main-editor {
-        padding: .5rem 0px;
-        background: var(--ks-background-body);
-        display: flex;
-        height: calc(100% - 49px);
-        min-height: 0;
-        max-height: 100%;
+.main-editor {
+    padding: .5rem 0px;
+    background: var(--ks-background-body);
+    display: flex;
+    height: calc(100% - 49px);
+    min-height: 0;
+    max-height: 100%;
 
-        > * {
-            flex: 1;
-        }
+    >* {
+        flex: 1;
+    }
+
+    html.dark & {
+        background-color: var(--bs-gray-100);
+    }
+}
+
+.editor-combined {
+    width: 50%;
+    min-width: 0;
+}
+
+.vueflow {
+    width: 100%;
+}
+
+html.dark .el-card :deep(.enhance-readability) {
+    background-color: var(--bs-gray-500);
+}
+
+:deep(.combined-right-view),
+.combined-right-view {
+    flex: 1;
+    position: relative;
+    overflow-y: auto;
+    height: 100%;
+
+    &.enhance-readability {
+        padding: 1.5rem;
+        background-color: var(--bs-gray-100);
+    }
+}
+
+.hide-view {
+    width: 0;
+    overflow: hidden;
+}
+
+.plugin-doc {
+    overflow-x: scroll;
+}
+
+.slider {
+    flex: 0 0 3px;
+    border-radius: 0.15rem;
+    margin: 0 4px;
+    background-color: var(--ks-border-primary);
+    border: none;
+    cursor: col-resize;
+    user-select: none;
+    /* disable selection */
+
+    &:hover {
+        background-color: var(--ks-border-active);
+    }
+}
+
+.vueflow {
+    height: 100%;
+}
+
+.topology-display .el-alert {
+    margin-top: 3rem;
+}
+
+.toggle-button {
+    font-size: var(--el-font-size-small);
+}
+
+.tabs {
+    flex: 1;
+    width: 100px;
+    white-space: nowrap;
+
+    .tab-active {
+        background: var(--bs-gray-200) !important;
+        color: black;
+        cursor: default;
 
         html.dark & {
-            background-color: var(--bs-gray-100);
-        }
-    }
-
-    .editor-combined {
-        width: 50%;
-        min-width: 0;
-    }
-
-    .vueflow {
-        width: 100%;
-    }
-
-    html.dark .el-card :deep(.enhance-readability) {
-        background-color: var(--bs-gray-500);
-    }
-
-    :deep(.combined-right-view),
-    .combined-right-view {
-        flex: 1;
-        position: relative;
-        overflow-y: auto;
-        height: 100%;
-
-        &.enhance-readability {
-            padding: 1.5rem;
-            background-color: var(--bs-gray-100);
-        }
-    }
-
-    .hide-view {
-        width: 0;
-        overflow: hidden;
-    }
-
-    .plugin-doc {
-        overflow-x: scroll;
-    }
-
-    .slider {
-        flex: 0 0 3px;
-        border-radius: 0.15rem;
-        margin: 0 4px;
-        background-color: var(--ks-border-primary);
-        border: none;
-        cursor: col-resize;
-        user-select: none; /* disable selection */
-
-        &:hover {
-            background-color: var(--ks-border-active);
-        }
-    }
-
-    .vueflow {
-        height: 100%;
-    }
-
-    .topology-display .el-alert {
-        margin-top: 3rem;
-    }
-
-    .toggle-button {
-        font-size: var(--el-font-size-small);
-    }
-
-    .tabs {
-        flex: 1;
-        width: 100px;
-        white-space: nowrap;
-
-        .tab-active {
-            background: var(--bs-gray-200) !important;
-            color: black;
-            cursor: default;
-
-            html.dark & {
-                color: white;
-            }
-
-            .tab-name {
-                font-weight: 600;
-            }
+            color: white;
         }
 
         .tab-name {
-            font-family: "Public sans", sans-serif;
-            font-size: 12px;
-            font-style: normal;
-            font-weight: 500;
-        }
-    }
-
-    .no-tabs-opened {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        max-width: 800px;
-        width: 100%;
-        padding: 2rem;
-        padding-bottom: 0;
-        margin: 0 auto;
-        height: 100%;
-
-        .img {
-            background: url("../../assets/empty-ns-files.png") no-repeat center;
-            background-size: contain;
-            width: 180px;
-            height: 180px;
-        }
-
-        h2 {
-            line-height: 30px;
-            font-size: 20px;
             font-weight: 600;
         }
+    }
 
-        p {
-            line-height: 22px;
-            font-size: 14px;
-            margin-bottom: 1rem;
-            color: var(--ks-content-secondary);
-        }
+    .tab-name {
+        font-family: "Public sans", sans-serif;
+        font-size: 12px;
+        font-style: normal;
+        font-weight: 500;
+    }
+}
 
-        .empty-state-actions {
-            margin-bottom: 2.5rem;
-            display: flex;
-            justify-content: center;
-            gap: 1rem;
-            width: 100%;
-        }
-        :deep(.el-divider__text) {
-            font-size: 12px;
-            padding: 0 15px;
-            color: var(--ks-content-secondary);
-            background-color: #f9f9fa;
-            html.dark & {
-                background-color: #1C1E27;
-            }
-        }
-        .video-container {
-            width: 100%;
-            margin-top: 1rem;
-            border: 1px solid var(--ks-border-primary);
-            border-radius: 0.5rem;
+.no-tabs-opened {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    max-width: 800px;
+    width: 100%;
+    padding: 2rem;
+    padding-bottom: 0;
+    margin: 0 auto;
+    height: 100%;
 
-            iframe {
-                width: 100%;
-                min-height: 380px;
-                height: auto;
-            }
-        }
+    .img {
+        background: url("../../assets/empty-ns-files.png") no-repeat center;
+        background-size: contain;
+        width: 180px;
+        height: 180px;
+    }
 
-        .hidden {
-            display: none;
+    h2 {
+        line-height: 30px;
+        font-size: 20px;
+        font-weight: 600;
+    }
+
+    p {
+        line-height: 22px;
+        font-size: 14px;
+        margin-bottom: 1rem;
+        color: var(--ks-content-secondary);
+    }
+
+    .empty-state-actions {
+        margin-bottom: 2.5rem;
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        width: 100%;
+    }
+
+    :deep(.el-divider__text) {
+        font-size: 12px;
+        padding: 0 15px;
+        color: var(--ks-content-secondary);
+        background-color: #f9f9fa;
+
+        html.dark & {
+            background-color: #1C1E27;
         }
     }
 
-    ul.tabs-context {
-        position: fixed;
-        z-index: 9999;
-        border-right: none;
+    .video-container {
+        width: 100%;
+        margin-top: 1rem;
+        border: 1px solid var(--ks-border-primary);
+        border-radius: 0.5rem;
 
-        & li {
-            height: 30px;
-            padding: 16px;
-            font-size: var(--el-font-size-small);
-            color: var(--bs-gray-700);
-
-            &:hover {
-                color: var(--ks-content-secondary);
-            }
+        iframe {
+            width: 100%;
+            min-height: 380px;
+            height: auto;
         }
     }
+
+    .hidden {
+        display: none;
+    }
+}
+
+ul.tabs-context {
+    position: fixed;
+    z-index: 9999;
+    border-right: none;
+
+    & li {
+        height: 30px;
+        padding: 16px;
+        font-size: var(--el-font-size-small);
+        color: var(--bs-gray-700);
+
+        &:hover {
+            color: var(--ks-content-secondary);
+        }
+    }
+}
 </style>
 
 <style lang="scss">

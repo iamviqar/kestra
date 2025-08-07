@@ -1,6 +1,7 @@
 package io.kestra.jdbc.repository;
 
 import io.kestra.core.models.QueryFilter;
+import io.kestra.core.models.QueryFilter.Resource;
 import io.kestra.core.models.dashboards.ColumnDescriptor;
 import io.kestra.core.models.dashboards.DataFilter;
 import io.kestra.core.models.dashboards.DataFilterKPI;
@@ -25,13 +26,11 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.Comparator;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -48,8 +47,12 @@ public abstract class AbstractJdbcLogRepository extends AbstractJdbcRepository i
 
     abstract protected Condition findCondition(String query);
 
+    protected Condition findQueryCondition(String query) {
+        return findCondition(query);
+    }
+
     @Getter
-    private final JdbcFilterService filterService;
+    protected final JdbcFilterService filterService;
 
     protected Map<Logs.Fields, String> getFieldsMapping() {
       return Map.of(
@@ -86,8 +89,6 @@ public abstract class AbstractJdbcLogRepository extends AbstractJdbcRepository i
         @Nullable String tenantId,
         @Nullable List<QueryFilter> filters
     ) {
-
-        String query = getQuery(filters);
         return this.jdbcRepository
             .getDslContextWrapper()
             .transactionResult(configuration -> {
@@ -98,10 +99,9 @@ public abstract class AbstractJdbcLogRepository extends AbstractJdbcRepository i
                     .hint(context.configuration().dialect().supports(SQLDialect.MYSQL) ? "SQL_CALC_FOUND_ROWS" : null)
                     .from(this.jdbcRepository.getTable())
                     .where(this.defaultFilter(tenantId))
-                    .and(NORMAL_KIND_CONDITION)
-                    .and(this.findCondition(query));
+                    .and(NORMAL_KIND_CONDITION);
 
-               select = this.filter(select, filters, "timestamp");
+               select = this.filter(select, filters, "timestamp", Resource.LOG);
 
                 return this.jdbcRepository.fetchPage(context, select, pageable);
             });
@@ -160,12 +160,28 @@ public abstract class AbstractJdbcLogRepository extends AbstractJdbcRepository i
         return select;
     }
 
+    private static <T extends Record> SelectConditionStep<T> addFlowId(SelectConditionStep<T> select, String flowId) {
+        if (flowId != null) {
+            select = select.and(field("flow_id").eq(flowId));
+        }
+        return select;
+    }
+
+    private static <T extends Record> SelectConditionStep<T> addExecutionId(SelectConditionStep<T> select, String executionId) {
+        if (executionId != null) {
+            select = select.and(field("execution_id").eq(executionId));
+        }
+        return select;
+    }
+
     @Override
     public Flux<LogEntry> findAsync(
-        @Nullable String tenantId,
-        @Nullable String namespace,
-        @Nullable Level minLevel,
-        ZonedDateTime startDate
+            @Nullable String tenantId,
+            @Nullable String namespace,
+            @Nullable String flowId,
+            @Nullable String executionId,
+            @Nullable Level minLevel,
+            ZonedDateTime startDate
     ){
         return Flux.create(emitter -> this.jdbcRepository
             .getDslContextWrapper()
@@ -179,6 +195,8 @@ public abstract class AbstractJdbcLogRepository extends AbstractJdbcRepository i
                     .where(this.defaultFilter(tenantId))
                     .and(NORMAL_KIND_CONDITION);
                 addNamespace(select, namespace);
+                addFlowId(select, flowId);
+                addExecutionId(select, executionId);
                 addMinLevel(select, minLevel);
                 select = select.and(field("timestamp").greaterThan(startDate.toOffsetDateTime()));
 
@@ -213,94 +231,6 @@ public abstract class AbstractJdbcLogRepository extends AbstractJdbcRepository i
                     emitter.complete();
                 }
             }), FluxSink.OverflowStrategy.BUFFER);
-    }
-
-    @Override
-    public List<LogStatistics> statistics(
-        @Nullable String query,
-        @Nullable String tenantId,
-        @Nullable String namespace,
-        @Nullable String flowId,
-        @Nullable Level minLevel,
-        @Nullable ZonedDateTime startDate,
-        @Nullable ZonedDateTime endDate,
-        @Nullable DateUtils.GroupType groupBy
-    ) {
-        ZonedDateTime finalStartDate = startDate == null ? ZonedDateTime.now().minusDays(30) : startDate;
-        ZonedDateTime finalEndDate = endDate == null ? ZonedDateTime.now() : endDate;
-        DateUtils.GroupType groupByType = DateUtils.groupByType(Duration.between(finalStartDate, finalEndDate));
-
-        List<Field<String>> fields = List.of(field("level", String.class));
-
-        List<Field<?>> dateFields = new ArrayList<>(groupByFields(Duration.between(finalStartDate, finalEndDate), "timestamp", groupBy));
-        List<Field<?>> selectFields = new ArrayList<>(fields);
-        selectFields.add(
-            DSL.count().as("count")
-        );
-        selectFields.addAll(groupByFields(Duration.between(finalStartDate, finalEndDate), "timestamp", groupBy, true));
-
-        return this.jdbcRepository
-            .getDslContextWrapper()
-            .transactionResult(configuration -> {
-                DSLContext context = DSL.using(configuration);
-
-                SelectConditionStep<Record> select = context
-                    .select(selectFields)
-                    .from(this.jdbcRepository.getTable())
-                    .where(this.defaultFilter(tenantId))
-                    .and(NORMAL_KIND_CONDITION);
-
-                this.filter(select, query, namespace, flowId, null, minLevel, startDate, endDate);
-
-                List<Field<?>> groupFields = new ArrayList<>(fields);
-                groupFields.addAll(dateFields);
-
-                SelectHavingStep<?> finalQuery = select
-                    .groupBy(groupFields);
-
-                List<LogStatistics> result = finalQuery
-                    .fetch()
-                    .map(record -> {
-                        Instant date = this.jdbcRepository.getDate(record, groupByType.val());
-                        LogStatistics base = LogStatistics
-                            .builder()
-                            .timestamp(date)
-                            .groupBy(groupByType.val())
-                            .build();
-
-                        HashMap<Level, Long> counts = new HashMap<>(base.getCounts());
-                        counts.put(
-                            record.get("level", Level.class),
-                            record.get("count", Long.class)
-                        );
-
-                        return base
-                            .toBuilder()
-                            .counts(counts)
-                            .build();
-                    });
-
-                return fillDate(result, finalStartDate, finalEndDate);
-            })
-            .stream()
-            .sorted(Comparator.comparing(LogStatistics::getTimestamp))
-            .toList();
-    }
-
-    private List<LogStatistics> fillDate(List<LogStatistics> result, ZonedDateTime startDate, ZonedDateTime endDate) {
-        DateUtils.GroupType groupByType = DateUtils.groupByType(Duration.between(startDate, endDate));
-
-        if (groupByType.equals(DateUtils.GroupType.MONTH)) {
-            return fillDate(result, startDate, endDate, ChronoUnit.MONTHS, "YYYY-MM");
-        } else if (groupByType.equals(DateUtils.GroupType.WEEK)) {
-            return fillDate(result, startDate, endDate, ChronoUnit.WEEKS, "YYYY-ww");
-        } else if (groupByType.equals(DateUtils.GroupType.DAY)) {
-            return fillDate(result, startDate, endDate, ChronoUnit.DAYS, "YYYY-MM-DD");
-        } else if (groupByType.equals(DateUtils.GroupType.HOUR)) {
-            return fillDate(result, startDate, endDate, ChronoUnit.HOURS, "YYYY-MM-DD HH");
-        } else {
-            return fillDate(result, startDate, endDate, ChronoUnit.MINUTES, "YYYY-MM-DD HH:mm");
-        }
     }
 
     private List<LogStatistics> fillDate(
@@ -578,7 +508,7 @@ public abstract class AbstractJdbcLogRepository extends AbstractJdbcRepository i
     }
 
     @Override
-    public int deleteByQuery(String tenantId, String namespace, String flowId, List<Level> logLevels, ZonedDateTime startDate, ZonedDateTime endDate) {
+    public int deleteByQuery(String tenantId, String namespace, String flowId, String executionId, List<Level> logLevels, ZonedDateTime startDate, ZonedDateTime endDate) {
         return this.jdbcRepository
             .getDslContextWrapper()
             .transactionResult(configuration -> {
@@ -599,6 +529,10 @@ public abstract class AbstractJdbcLogRepository extends AbstractJdbcRepository i
 
                 if (flowId != null) {
                     delete = delete.and(field("flow_id").eq(flowId));
+                }
+
+                if (executionId != null) {
+                    delete = delete.and(field("execution_id").eq(executionId));
                 }
 
                 if (logLevels != null) {

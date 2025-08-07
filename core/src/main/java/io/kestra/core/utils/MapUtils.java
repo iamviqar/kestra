@@ -10,7 +10,56 @@ import java.util.*;
 public class MapUtils {
     private static final String CONFLICT_AT_KEY_MSG = "Conflict at key: '{}', ignoring it. Map keys are: {}";
 
+    /**
+     * Merge map a with map b.
+     * @see #deepMerge(Map, Map) that perform a deep merge which is more costly but safer for some use cases.
+     */
     public static Map<String, Object> merge(Map<String, Object> a, Map<String, Object> b) {
+        if (a == null && b == null) {
+            return null;
+        }
+
+        if (a == null || a.isEmpty()) {
+            return b;
+        }
+
+        if (b == null || b.isEmpty()) {
+            return a;
+        }
+
+        Map<String, Object> result = HashMap.newHashMap(Math.max(a.size(), b.size()));
+        result.putAll(a);
+
+        for (Map.Entry<String, Object> entry : b.entrySet()) {
+            String key = entry.getKey();
+            Object valueB = entry.getValue();
+            Object valueA = result.get(key);
+
+            Object mergedValue;
+            if (valueB == null) {
+                mergedValue = valueA;
+            } else if (valueA == null) {
+                mergedValue = valueB;
+            } else if (valueA instanceof Map<?, ?> mapA && valueB instanceof Map<?, ?> mapB) {
+                mergedValue = merge(castMap(mapA), castMap(mapB));
+            } else if (valueA instanceof Collection<?> colA && valueB instanceof Collection<?> colB) {
+                mergedValue = mergeCollections(colA, colB);
+            } else {
+                mergedValue = valueB;
+            }
+
+            result.put(key, mergedValue);
+        }
+
+        return result;
+    }
+
+    /**
+     * Merge map a with map b, deep cloning maps and lists.
+     *
+     * @see #merge(Map, Map) that didn't deepclone and performs better.
+     */
+    public static Map<String, Object> deepMerge(Map<String, Object> a, Map<String, Object> b) {
         if (a == null && b == null) {
             return null;
         }
@@ -37,7 +86,7 @@ public class MapUtils {
             } else if (valueA == null) {
                 mergedValue = valueB;
             } else if (valueA instanceof Map<?, ?> mapA && valueB instanceof Map<?, ?> mapB) {
-                mergedValue = merge(castMap(mapA), castMap(mapB));
+                mergedValue = deepMerge(castMap(mapA), castMap(mapB));
             } else if (valueA instanceof Collection<?> colA && valueB instanceof Collection<?> colB) {
                 mergedValue = mergeCollections(colA, colB);
             } else {
@@ -120,7 +169,7 @@ public class MapUtils {
     }
 
     /**
-     * Utility method nested a flattened map.
+     * Utility method that nests a flattened map.
      *
      * @param flatMap the flattened map.
      * @return the nested map.
@@ -153,5 +202,45 @@ public class MapUtils {
             currentMap.put(lastKey, entry.getValue());
         }
         return result;
+    }
+
+    /**
+     * Utility method that flatten a nested map.
+     * <p>
+     * NOTE: for simplicity, this method didn't allow to flatten maps with conflicting keys that would end up in different flatten keys,
+     * this could be related later if needed by flattening {k1: k2: {k3: v1}, k1: {k4: v2}} to {k1.k2.k3: v1, k1.k4: v2} is prohibited for now.
+     *
+     * @param nestedMap the nested map.
+     * @return the flattened map.
+     *
+     * @throws IllegalArgumentException if any entry contains a map of more than one element.
+     */
+    public static Map<String, Object> nestedToFlattenMap(@NotNull Map<String, Object> nestedMap) {
+        Map<String, Object> result = new TreeMap<>();
+
+        for (Map.Entry<String, Object> entry : nestedMap.entrySet()) {
+            if (entry.getValue() instanceof Map<?, ?> map) {
+                Map.Entry<String, Object> flatten = flattenEntry(entry.getKey(), (Map<String, Object>) map);
+                result.put(flatten.getKey(), flatten.getValue());
+            } else {
+                result.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return result;
+    }
+
+    private static Map.Entry<String, Object> flattenEntry(String key, Map<String, Object> value) {
+        if (value.size() > 1) {
+            throw new IllegalArgumentException("You cannot flatten a map with an entry that is a map of more than one element, conflicting key: " + key);
+        }
+
+        Map.Entry<String, Object> entry = value.entrySet().iterator().next();
+        String newKey = key + "." + entry.getKey();
+        Object newValue = entry.getValue();
+        if (newValue instanceof Map<?, ?> map) {
+            return flattenEntry(newKey, (Map<String, Object>) map);
+        } else {
+            return Map.entry(newKey, newValue);
+        }
     }
 }

@@ -12,8 +12,8 @@ import io.kestra.core.services.PluginDefaultService;
 import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.annotation.Value;
 import io.micronaut.scheduling.io.watch.FileWatchConfiguration;
-import jakarta.inject.Inject;
 import jakarta.annotation.Nullable;
+import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +25,8 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
+import static io.kestra.core.tenant.TenantService.MAIN_TENANT;
 
 @Singleton
 @Slf4j
@@ -111,6 +113,8 @@ public class FileChangedEventListener {
     }
 
     public void startListening(List<Path> paths) throws IOException, InterruptedException {
+        String tenantId = this.tenantId != null ? this.tenantId : MAIN_TENANT;
+
         for (Path path : paths) {
             path.register(watchService, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE, StandardWatchEventKinds.ENTRY_MODIFY);
         }
@@ -158,7 +162,15 @@ public class FileChangedEventListener {
                                     }
 
                                 } catch (NoSuchFileException e) {
-                                    log.error("File not found: {}", entry, e);
+                                    log.warn("File not found: {}, deleting it", entry, e);
+                                    // the file might have been deleted while reading so if not found we try to delete the flow
+                                    flows.stream()
+                                        .filter(flow -> flow.getPath().equals(filePath.toString()))
+                                        .findFirst()
+                                        .ifPresent(flowWithPath -> {
+                                            flowFilesManager.deleteFlow(flowWithPath.getTenantId(), flowWithPath.getNamespace(), flowWithPath.getId());
+                                            this.flows.removeIf(fwp -> fwp.uidWithoutRevision().equals(flowWithPath.uidWithoutRevision()));
+                                        });
                                 } catch (IOException e) {
                                     log.error("Error reading file: {}", entry, e);
                                 }
@@ -189,6 +201,8 @@ public class FileChangedEventListener {
     }
 
     private void loadFlowsFromFolder(Path folder) {
+        String tenantId = this.tenantId != null ? this.tenantId : MAIN_TENANT;
+
         try {
             Files.walkFileTree(folder, new SimpleFileVisitor<Path>() {
                 @Override
@@ -232,6 +246,8 @@ public class FileChangedEventListener {
     }
 
     private Optional<FlowWithSource> parseFlow(String content, Path entry) {
+        String tenantId = this.tenantId != null ? this.tenantId : MAIN_TENANT;
+
         try {
             FlowWithSource flow = pluginDefaultService.parseFlowWithAllDefaults(tenantId, content, false);
             modelValidator.validate(flow);

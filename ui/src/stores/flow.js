@@ -6,12 +6,18 @@ import * as YAML_UTILS from "@kestra-io/ui-libs/flow-yaml-utils";
 import Utils from "../utils/utils";
 import {editorViewTypes} from "../utils/constants";
 import {apiUrl} from "override/utils/route";
+import {useCoreStore} from "./core";
+import {useEditorStore} from "./editor";
+import {useNamespacesStore} from "override/stores/namespaces";
+
+import {transformResponse} from "../components/dependencies/composables/useDependencies"
 
 const textYamlHeader = {
     headers: {
         "Content-Type": "application/x-yaml"
     }
 }
+
 export default {
     namespaced: true,
     state: {
@@ -22,6 +28,7 @@ export default {
         total: 0,
         overallTotal: undefined,
         flowGraph: undefined,
+        invalidGraph: false,
         revisions: undefined,
         flowValidation: undefined,
         taskError: undefined,
@@ -47,21 +54,29 @@ export default {
             commit("setHaveChange", true)
         },
         async saveAll({dispatch, state, commit, getters}){
-            if (getters.flowErrors?.length || !state.haveChange && !state.isCreating) {
+            const editorStore = useEditorStore()
+            const hasAnyDirtyTabs = editorStore.tabs.some(t => t.dirty === true);
+            const hasChanges = state.haveChange || hasAnyDirtyTabs;
+
+            if (getters.flowErrors?.length || !hasChanges && !state.isCreating) {
                 return;
             }
 
-            await dispatch("editor/saveAllTabs", {namespace: getters.namespace}, {root: true});
+            await editorStore.saveAllTabs({namespace: state.flow.namespace}, {root: true});
             commit("setFlowYamlOrigin", state.flowYaml);
             return dispatch("saveWithoutRevisionGuard");
         },
-        async save({getters, dispatch, commit, state, rootState}, {content, namespace}){
-            if (getters.flowErrors?.length || !state.haveChange && !state.isCreating) {
+        async save({getters, dispatch, commit, state}, {content, namespace}){
+            const editorStore = useEditorStore()
+            const hasAnyDirtyTabs = editorStore.tabs.some(t => t.dirty === true);
+            const hasChanges = state.haveChange || hasAnyDirtyTabs;
+
+            if (getters.flowErrors?.length || !hasChanges && !state.isCreating) {
                 return;
             }
 
             const source = state.flowYaml
-            const currentTab = rootState.editor.current;
+            const currentTab = editorStore.current;
 
             if (getters.isFlow) {
                 return dispatch("onEdit", {source, currentIsFlow:true}).then((validation) => {
@@ -72,52 +87,59 @@ export default {
                     commit("setFlowYamlOrigin", source);
 
                     if (currentTab && currentTab.name) {
-                        commit("editor/setTabDirty", {
+                        editorStore.setTabDirty({
                             name: "Flow",
                             path: "Flow.yaml",
                             dirty: false,
                             flow: true,
-                        }, {root: true});
+                        });
                     }
                     return res
                 });
             } else {
                 if(!currentTab?.dirty) return;
 
-                await dispatch("namespace/createFile", {
-                    namespace: namespace ?? getters.namespace,
+                const namespacesStore = useNamespacesStore();
+                await namespacesStore.createFile({
+                    namespace: namespace ?? state.flow.namespace,
                     path: currentTab.path ?? currentTab.name,
                     content,
                 }, {root: true});
-                commit("editor/setTabDirty", {
+                editorStore.setTabDirty({
                     path: currentTab.path,
                     name: currentTab.name,
                     dirty: false
-                }, {root: true});
+                });
 
-                dispatch("core/isUnsaved", false, {root: true});
+                const coreStore = useCoreStore();
+                coreStore.unsavedChange = false;
             }
         },
-        onEdit({getters, dispatch, commit, state, rootState}, {source, currentIsFlow, editorViewType, topologyVisible}) {
+        onEdit({getters, dispatch, commit, state}, {source, currentIsFlow, editorViewType, topologyVisible}) {
             const flowParsed = getters.flowParsed;
-            const currentTab = rootState.editor.current;
+            const currentTab = useEditorStore().current;
 
             if (currentIsFlow) {
+                if (!source.trim()?.length) {
+                    commit("setFlowValidation", {constraints: this.$i18n.t("flow must not be empty")})
+                    return
+                }
                 if (!state.isCreating){
                     if(!source.trim()?.length ||
                         (flowParsed &&
-                        (getters.id !== flowParsed.id ||
-                            getters.namespace !== flowParsed.namespace)))
+                        (state.flow.id !== flowParsed.id ||
+                            state.flow.namespace !== flowParsed.namespace)))
                         {
-                        dispatch("core/showMessage", {
+                        const coreStore = useCoreStore();
+                        coreStore.message = {
                             variant: "error",
                             title: this.$i18n.t("readonly property"),
                             message: this.$i18n.t("namespace and id readonly"),
-                        }, {root: true});
+                        };
                         commit("setFlowYaml", YAML_UTILS.replaceIdAndNamespace(
                             source,
-                            getters.id,
-                            getters.namespace
+                            state.flow.id,
+                            state.flow.namespace
                         ));
                     }
                 }
@@ -125,16 +147,17 @@ export default {
 
             commit("setHaveChange", true);
             if(editorViewType === "YAML") {
-                dispatch("core/isUnsaved", true, {root: true});
+                const coreStore = useCoreStore();
+                coreStore.unsavedChange = true;
             }
 
             if(!state.isCreating){
-                commit("editor/setTabDirty", {
+                useEditorStore().setTabDirty({
                     ...currentTab,
                     name: currentTab?.name ?? "Flow",
                     path: currentTab?.path ?? "Flow.yaml",
                     dirty: true
-                }, {root: true});
+                });
             }
 
             if(!currentIsFlow) return;
@@ -161,11 +184,12 @@ export default {
             const flowParsed = getters.flowParsed;
 
             if (flowParsed === undefined) {
-                dispatch("core/showMessage", {
+                const coreStore = useCoreStore();
+                coreStore.message = {
                     variant: "error",
                     title: this.$i18n.t("invalid flow"),
                     message: this.$i18n.t("invalid yaml"),
-                }, {root: true});
+                };
 
                 return;
             }
@@ -201,14 +225,17 @@ export default {
                 await dispatch("createFlow", {flow: flowYaml})
                     .then((response) => {
                         this.$toast.bind({$t: this.$i18n.t})().saved(response.id);
-                        dispatch("core/isUnsaved", false, {root: true});
+                        const coreStore = useCoreStore();
+                        coreStore.unsavedChange = false;
                         commit("setIsCreating", false);
+                        commit("setHaveChange", false);
                     });
             } else {
                 await dispatch("saveFlow", {flow: flowYaml})
                     .then((response) => {
                         this.$toast.bind({$t: this.$i18n.t})().saved(response.id);
-                        dispatch("core/isUnsaved", false, {root: true});
+                        const coreStore = useCoreStore();
+                        coreStore.unsavedChange = false;
                     });
             }
 
@@ -236,7 +263,8 @@ export default {
             });
         },
         async initYamlSource({getters, commit, dispatch, state}, {viewType}) {
-            const {source} = getters.flow;
+            if(!state.flow) return;
+            const {source} = state.flow;
             commit("setFlowYaml", source);
             commit("setFlowYamlOrigin", source);
             if (getters.flowHaveTasks) {
@@ -300,21 +328,28 @@ export default {
                 })
                 .then(response => {
                     if (response.data.exception) {
-                        commit("core/setMessage", {
+                        const coreStore = useCoreStore();
+                        coreStore.message = {
                             title: "Invalid source code",
                             message: response.data.exception,
-                            variant: "danger"
-                        }, {root: true});
+                            variant: "error"
+                        };
+                        // add this error to the list of errors
+                        commit("setFlowValidation", {
+                            constraints: response.data.exception
+                        });
                         delete response.data.exception;
                     }
                     if(options.store === false) {
                         return response.data;
                     }
+
                     commit("setFlow", response.data);
                     commit("setFlowYaml", response.data.source);
                     commit("setFlowYamlOrigin", response.data.source);
                     commit("setFlowYamlBeforeAdd", response.data.source);
                     commit("setOverallTotal", 1)
+
                     return response.data;
                 })
         },
@@ -345,7 +380,7 @@ export default {
                         return Promise.reject(new Error("Server error on flow save"))
                     } else {
                         commit("setFlow", response.data);
-                        commit("editor/setTabDirty", {
+                        useEditorStore().setTabDirty({
                             name: "Flow",
                             dirty: false,
                         }, {root: true});
@@ -372,6 +407,14 @@ export default {
                 commit("setFlow", response.data);
 
                 return response.data;
+            })
+        },
+        loadDependencies(_, options) {
+            return this.$http.get(`${apiUrl(this)}/flows/${options.namespace}/${options.id}/dependencies?expandAll=true`).then(response => {
+                return {
+                    data: transformResponse(response.data, options.subtype),
+                    count: response.data.nodes ? [...new Set(response.data.nodes.map((r) => r.uid))].length : 0
+                };
             })
         },
         deleteFlowAndDependencies({getters, dispatch}){
@@ -443,9 +486,12 @@ export default {
                 params["revision"] = flow.revision;
             }
             return this.$http.get(`${apiUrl(this)}/flows/${flow.namespace}/${flow.id}/graph`, {params}).then(response => {
+                commit("setInvalidGraph", false)
                 commit("setFlowGraph", response.data)
                 return response.data;
-            })
+            }).catch(() => {
+                commit("setInvalidGraph", true)
+            });
         },
         loadGraphFromSource({commit, state}, options) {
             const config = options.config ? {...options.config, ...textYamlHeader} : textYamlHeader;
@@ -473,11 +519,12 @@ export default {
                     }
 
                     if([404, 422].includes(error.response?.status) && config?.params?.subflows?.length > 0) {
-                        commit("core/setMessage", {
+                        const coreStore = useCoreStore();
+                        coreStore.message = {
                             title: "Couldn't expand subflow",
                             message: error.response.data.message,
                             variant: "danger"
-                        }, {root: true});
+                        };
                     }
 
                     return Promise.reject(error);
@@ -514,7 +561,11 @@ export default {
                 });
         },
         importFlows(_, options) {
-            return this.$http.post(`${apiUrl(this)}/flows/import`, Utils.toFormData(options), {headers: {"Content-Type": "multipart/form-data"}})
+            return this.$http.post(`${apiUrl(this)}/flows/import`, Utils.toFormData(options), {
+                headers: {"Content-Type": "multipart/form-data"}
+            }).then(response => {
+                return response;
+            });
         },
         disableFlowByIds(_, options) {
             return this.$http.post(`${apiUrl(this)}/flows/disable/by-ids`, options.ids)
@@ -585,6 +636,9 @@ export default {
         },
     },
     mutations: {
+        setInvalidGraph(state, value) {
+            state.invalidGraph = value;
+        },
         setFlows(state, flows) {
             state.flows = flows
         },
@@ -685,53 +739,30 @@ export default {
         },
     },
     getters: {
-        isFlow(state, _getters, rootState) {
-            const currentTab = rootState.editor.current;
+        isFlow(state, _getters) {
+            const currentTab = useEditorStore().current;
             return currentTab?.flow !== undefined || state.isCreating;
         },
-        lastSaveFlow(state){
-            if(state.lastSavedFlow){
-                return state.lastSavedFlow;
-            }
-        },
-        flow(state) {
-            if (state.flow) {
-                return state.flow;
-            }
-        },
-        flowYaml(state) {
-            return state.flowYaml;
-        },
-        flowValidation(state) {
-            if (state.flowValidation) {
-                return state.flowValidation;
-            }
-        },
-        taskError(state) {
-            if (state.taskError) {
-                return state.taskError;
-            }
-        },
-        isAllowedEdit(_state, getters, _rootState, rootGetters) {
-            if (!getters.flow || !rootGetters["auth/user"]) {
+        isAllowedEdit(state, _getters, _rootState, rootGetters) {
+            if (!state.flow || !rootGetters["auth/user"]) {
                 return false;
             }
 
             return rootGetters["auth/user"].isAllowed(
                 permission.FLOW,
                 action.UPDATE,
-                getters.flow.namespace,
+                state.flow.namespace,
             );
         },
-        isReadOnly(_state, getters) {
-            return getters.flow?.deleted || !getters.isAllowedEdit || getters.readOnlySystemLabel;
+        isReadOnly(state, getters) {
+            return state.flow?.deleted || !getters.isAllowedEdit || getters.readOnlySystemLabel;
         },
-        readOnlySystemLabel(_state, getters) {
-            if (!getters.flow) {
+        readOnlySystemLabel(state) {
+            if (!state.flow) {
                 return false;
             }
 
-            return (getters.flow.labels?.["system.readOnly"] === "true") || (getters.flow.labels?.["system.readOnly"] === true);
+            return (state.flow.labels?.["system.readOnly"] === "true") || (state.flow.labels?.["system.readOnly"] === true);
         },
         baseOutdatedTranslationKey(state) {
                 const createOrUpdateKey = state.isCreating ? "create" : "update";
@@ -765,15 +796,15 @@ export default {
         },
         flowHaveTasks(state, getters){
             if (getters.isFlow) {
-                const flow = state.isCreating ? getters.flow.source : state.flowYaml;
+                const flow = state.isCreating ? state.flow.source : state.flowYaml;
                 return flow ? YAML_UTILS.flowHaveTasks(flow) : false;
             } else return false;
         },
-        nextRevision(_state, getters){
-            return getters.flow.revision + 1;
+        nextRevision(state){
+            return (state.flow?.revision ?? 0) + 1;
         },
-        yamlWithNextRevision(_state, getters){
-            return `revision: ${getters.nextRevision}\n${getters.flowYaml}`;
+        yamlWithNextRevision(state, getters){
+            return `revision: ${getters.nextRevision}\n${state.flowYaml}`;
         },
         flowParsed(state){
             try{
@@ -781,12 +812,6 @@ export default {
             }catch{
                 return undefined
             }
-        },
-        namespace(state){
-            return state.flow?.namespace;
-        },
-        id(state){
-            return state.flow?.id;
         },
         flowYamlMetadata(state){
             return YAML_UTILS.getMetadata(state.flowYaml);
